@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>soulget</AssemblyName>
+    <RootNamespace>Soulget</RootNamespace>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Soulseek" Version="10.0.2" />
+    <PackageReference Include="Tomlyn" Version="2.10.1" />
+    <!-- The example settings travel inside the program, so one file is all anyone needs. -->
+    <EmbeddedResource Include="../config.example.toml" LogicalName="Soulget.config.example.toml" />
+    <EmbeddedResource Include="../LICENSE" LogicalName="Soulget.LICENSE" />
+  </ItemGroup>
+
+</Project>

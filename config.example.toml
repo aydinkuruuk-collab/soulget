@@ -1,0 +1,74 @@
+# soulget settings. Fill in the [soulseek] part once.
+
+[soulseek]
+# Your Soulseek login (the same one as in SoulseekQt is fine).
+# Soulseek allows one connection per name: if SoulseekQt is open with this name,
+# one of them gets kicked off. Close SoulseekQt first, or use a second name here
+# (a name that doesn't exist yet is created automatically on first login).
+username = ""
+password = ""
+
+# Where music is saved. Each artist or label gets its own folder inside.
+download_folder = "~/Music/soulget"
+
+# Network port for other users to connect to you. Change it if 60000 is taken.
+listen_port = 60000
+
+[discogs]
+# Optional. Without a token it works, just slower (25 instead of 60 requests a minute).
+# Get one at https://www.discogs.com/settings/developers -> "Generate new token".
+token = ""
+
+[download]
+# Used when you don't type a bitrate on the command line.
+default_min_bitrate = 320
+
+# Allowed file types, best first. Lossless types (flac, wav, aiff) always pass
+# the bitrate check. Example for lossless first: ["flac", "mp3"]
+formats = ["mp3", "flac"]
+
+# How many tracks to search/download at the same time.
+parallel_downloads = 3
+
+# How long to collect search results for each track.
+search_wait_seconds = 8
+
+# How many different users to try per track before giving up.
+max_tries_per_track = 5
+
+# Give up on a user if their upload hasn't started after this long
+# (they may have a long queue), or if it stops moving for this long.
+start_timeout_seconds = 120
+stall_timeout_seconds = 60
+
+# While a file downloads, print how far along it is this often.
+progress_every_seconds = 30
+
+# If a user sends slower than this (KB per second) and another user also has
+# the file, switch to the other user. Set to 0 to never switch.
+slow_speed_kb_per_s = 50
+
+# How downloaded files are named. You can use {year} {catno} {position} {artist} {title}
+# {release}. Year first keeps a label's records in order (catalogue numbers alone
+# often sort wrongly, e.g. "ECOM 8" after "ECOM 50").
+# Empty parts disappear with their brackets; the release is left out when it has
+# the same name as the track. After changing it, ./soulget --rename renames old files.
+file_name = "{year} [{catno}] {position} {artist} - {title} ({release})"
+
+# Stop downloading when the disk has less than this many GB free (the rest stay
+# on the timer's list).
+min_free_gb = 10
+
+[retry]
+# Used by ./soulget --retry-missing and by the timer (./soulget --schedule on).
+# Every 7 hours, so the check time drifts around the clock and across the week.
+every_hours = 7
+
+# Stop searching for a track this many days after it was first missed.
+give_up_after_days = 14
+
+# Optional second Soulseek login just for the timer, so it never kicks your
+# SoulseekQt off. If left empty, the timer uses the login above and skips a
+# check whenever SoulseekQt is open.
+username = ""
+password = ""

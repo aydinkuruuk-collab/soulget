@@ -1,0 +1,10 @@
+# build output
+bin/
+obj/
+dist/
+release/
+# your own settings and caches never belong here
+config.toml
+.cache/
+retry-output.log
+.DS_Store

@@ -1,0 +1,46 @@
+soulget
+=======
+
+soulget downloads one copy of every track by an artist, on a label, or on a
+record from the Soulseek network, using Discogs for the track lists.
+
+Copyright (C) 2026 the soulget contributors.
+
+soulget is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License, version 3 only (GPL-3.0-only).
+It comes with ABSOLUTELY NO WARRANTY; see sections 15 and 16 of the license.
+
+The full license is in the file LICENSE. It is the license of Soulseek.NET,
+which soulget uses: the GNU General Public License v3.0 together with the
+Additional Terms of Soulseek.NET, reproduced unchanged as those terms require.
+
+Uses Soulseek.NET
+-----------------
+soulget is built on Soulseek.NET 10.0.2 by JP Dillingham
+(https://github.com/jpdillingham/Soulseek.NET), used unmodified.
+soulget is not maintained by, endorsed by, or affiliated with the Soulseek.NET
+project or its author(s).
+
+Client version identifier
+-------------------------
+As the Soulseek.NET Additional Terms (section 5) require, soulget logs in with
+its own client version: major 170 (fixed by Soulseek.NET), minor 20261020.
+At the time of choosing (20 October 2026) this number was outside every range
+listed as reserved in the Soulseek.NET README (760-7699999: slskd) and different
+from the library's former default (100).
+
+Your responsibility
+-------------------
+You are responsible for using soulget lawfully and within the rules of the
+Soulseek network, including copyright law where you live.
+
+Other software inside soulget
+-----------------------------
+Tomlyn (BSD-2-Clause) and the Microsoft .NET runtime (MIT) are built into each
+soulget program file; their licenses and notices are in THIRD-PARTY-NOTICES.txt.
+
+Source code
+-----------
+Anyone who receives soulget as a program must also be able to get its source
+code. Copies passed on by the soulget authors include it (the "source" folder),
+together with the source of Soulseek.NET 10.0.2 (source/third-party).
