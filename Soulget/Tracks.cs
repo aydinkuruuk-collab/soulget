@@ -319,8 +319,11 @@ public static class Tracks
         return dot >= 0 ? name[..dot] : name;
     }
 
-    /// <summary>Null if the file is acceptable, otherwise a short reason it was rejected.</summary>
-    public static string? Judge(Track t, Candidate c, int minBitrate, IList<string> formats)
+    /// <summary>Null if the file is acceptable, otherwise a short reason it was rejected.
+    /// <paramref name="strict"/> is for artist names other artists share ("Katran"): the file must also show
+    /// it is this artist's record, by the release name or catalogue number in its folder or file name, or by
+    /// a length within 10 s of the Discogs length.</summary>
+    public static string? Judge(Track t, Candidate c, int minBitrate, IList<string> formats, bool strict = false)
     {
         if (!formats.Contains(c.Ext)) return "format";
         if (!Lossless.Contains(c.Ext))
@@ -364,6 +367,16 @@ public static class Tracks
             var rt = TokenSet(t.Release);
             rt.ExceptWith(NoiseTokens);
             if (rt.Count > 0 && rt.Count(pathTok.Contains) < Math.Max(1, rt.Count / 2)) return "different release";
+        }
+        if (strict)
+        {
+            var rt = TokenSet(t.Release);
+            rt.ExceptWith(NoiseTokens);
+            var cat = TokenSet(t.Catno);
+            var releaseSeen = rt.Count > 0 && rt.Count(pathTok.Contains) >= (rt.Count + 1) / 2;
+            var catnoSeen = cat.Count > 0 && cat.IsSubsetOf(pathTok);
+            var lengthClose = t.Duration is > 0 && c.Duration is > 0 && Math.Abs(c.Duration.Value - t.Duration.Value) <= 10;
+            if (!(releaseSeen || catnoSeen || lengthClose)) return "can't confirm it's this artist";
         }
         if (t.Duration is > 0 && c.Duration is > 0)
         {

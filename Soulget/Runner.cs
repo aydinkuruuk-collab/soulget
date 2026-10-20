@@ -18,9 +18,9 @@ public class Outcome(Track track, string status, string file = "", string fmt = 
 /// <summary>How to search and download, from config.toml and the folder's saved settings.</summary>
 public record Opts(int MinBitrate, List<string> Formats, int Parallel, double SearchWait, int MaxTries,
                    double StartTimeout, double StallTimeout, double ProgressEvery, double SlowBps,
-                   bool FallbackQueries, string FileName, double MinFreeGb)
+                   bool FallbackQueries, string FileName, double MinFreeGb, bool Strict = false)
 {
-    public static Opts From(Config cfg, int minBitrate, List<string> formats, bool retry = false) => new(
+    public static Opts From(Config cfg, int minBitrate, List<string> formats, bool retry = false, bool strict = false) => new(
         minBitrate, formats,
         cfg.Int("download", "parallel_downloads", 3),
         cfg.Num("download", "search_wait_seconds", 8),
@@ -33,7 +33,8 @@ public record Opts(int MinBitrate, List<string> Formats, int Parallel, double Se
         // 34 searches every 220 s, and a big label can have hundreds of misses.
         !retry,
         Catalog.FileNameTemplate(cfg),
-        cfg.Num("download", "min_free_gb", 10));
+        cfg.Num("download", "min_free_gb", 10),
+        strict);
 
     public DownloadSettings Download => new(StartTimeout, StallTimeout, ProgressEvery, SlowBps);
 }
@@ -104,7 +105,7 @@ public static class Runner
             var good = new List<Candidate>();
             foreach (var c in cands)
             {
-                var why = Tracks.Judge(t, c, opts.MinBitrate, fmts);
+                var why = Tracks.Judge(t, c, opts.MinBitrate, fmts, opts.Strict);
                 if (why is not null)
                 {
                     if (!reasons.ContainsKey(why)) { reasons[why] = 0; reasonOrder.Add(why); }

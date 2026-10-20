@@ -67,6 +67,7 @@ on Windows (or put the folder on your PATH and just type `soulget`).
 | `... --formats flac,wav,mp3` | allowed file types, best first (default: mp3, then flac). Every copy in an earlier format is tried before any later one |
 | `... --no-compilations` | skip DJ-mix CDs and CD/download compilations; vinyl is always kept (for an artist: tracks found only on other people's compilations) |
 | `... --their-remixes` | artist mode: also get remixes the artist made for others |
+| `... --strict` | for artist names other artists share (e.g. "Katran"): a file only counts if its folder shows the record's name or catalogue number, or its length matches Discogs within 10 s. The setting is kept for later retries |
 
 If you leave out the bitrate, the one in `config.toml` is used (320).
 FLAC/WAV/AIFF always pass the bitrate check, since they are lossless.

@@ -139,7 +139,8 @@ public static class Retry
             if (legacy)
                 foreach (var t in keep) misses.Queue(t.Key, t.Display());   // so a check stopped halfway doesn't forget the rest
             misses.Save();
-            works.Add(new Work(folder, keep, Opts.From(cfg, job.MinBitrate, job.Formats, retry: true), outcomes, misses, gave));
+            works.Add(new Work(folder, keep, Opts.From(cfg, job.MinBitrate, job.Formats, retry: true, strict: job.Strict),
+                               outcomes, misses, gave));
             Console.WriteLine($"{Path.GetFileName(folder)}: {keep.Count} still missing" + (gave > 0 ? $", {gave} given up on" : ""));
         }
 

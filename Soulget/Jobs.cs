@@ -19,6 +19,7 @@ public class Job
     public bool NoRemixes;
     public bool NoCompilations;
     public bool TheirRemixes;
+    public bool Strict;                      // artist name shared with others: files must prove they're this artist's
     public List<int>? Years;
     public List<List<string>>? TrackPairs;   // kind "tracks": [artist, title] pairs you asked for
 
@@ -35,6 +36,7 @@ public class Job
             NoRemixes = J.Truthy(J.Get(o, "no_remixes")),
             NoCompilations = J.Truthy(J.Get(o, "no_compilations")),
             TheirRemixes = J.Truthy(J.Get(o, "their_remixes")),
+            Strict = J.Truthy(J.Get(o, "strict")),   // older files without it: false
             Years = J.Get(o, "years") is JsonArray y ? J.Items(y).Select(J.Int).ToList() : null,
             TrackPairs = J.Get(o, "tracks") is JsonArray tr
                 ? J.Items(tr).Select(p => J.Items((JsonArray)p).Select(x => x.GetValue<string>()).ToList()).ToList()
@@ -49,6 +51,7 @@ public class Job
             ["kind"] = Kind, ["id"] = Id, ["name"] = Name, ["url"] = Url, ["min_bitrate"] = MinBitrate,
             ["formats"] = new JsonArray(Formats.Select(f => (JsonNode)f).ToArray()),
             ["no_remixes"] = NoRemixes, ["no_compilations"] = NoCompilations, ["their_remixes"] = TheirRemixes,
+            ["strict"] = Strict,
             ["years"] = Years is null ? null : new JsonArray(Years.Select(y => (JsonNode)y).ToArray()),
             ["tracks"] = TrackPairs is null ? null
                 : new JsonArray(TrackPairs.Select(p => (JsonNode)new JsonArray(p.Select(x => (JsonNode)x).ToArray())).ToArray()),

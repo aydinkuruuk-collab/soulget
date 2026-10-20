@@ -8,7 +8,7 @@ public class Args
 {
     public string? Name;
     public int? MinBitrate;
-    public bool Label, DryRun, NoRemixes, NoCompilations, TheirRemixes, Later, Queue, Rename, Yes,
+    public bool Label, DryRun, NoRemixes, NoCompilations, TheirRemixes, Strict, Later, Queue, Rename, Yes,
                 RetryMissing, Scheduled, Verbose, Help, Version, License;
     public string? Years, Formats, Album, Schedule, DumpTracks;
     public int? Limit;
@@ -43,6 +43,7 @@ public class Args
                 case "--no-remixes": a.NoRemixes = true; break;
                 case "--no-compilations": a.NoCompilations = true; break;
                 case "--their-remixes": a.TheirRemixes = true; break;
+                case "--strict": a.Strict = true; break;
                 case "--later": a.Later = true; break;
                 case "--queue": a.Queue = true; break;
                 case "--rename": a.Rename = true; break;
@@ -84,12 +85,12 @@ public class UsageError(string message) : Exception(message);
 
 public static class Program
 {
-    public const string AppVersion = "2.0.0";
+    public const string AppVersion = "2.0.1";
     public const string Wanted = "Wanted tracks";  // folder for single tracks added with --track
 
     public const string Usage = """
         usage: soulget [-h] [--label] [--dry-run] [--no-remixes] [--no-compilations]
-                       [--their-remixes] [--years YEARS] [--formats FORMATS]
+                       [--their-remixes] [--years YEARS] [--strict] [--formats FORMATS]
                        [--limit LIMIT] [--album "ARTIST - TITLE"]
                        [--track "ARTIST - TITLE"] [--later] [--queue] [--rename]
                        [--retry-missing] [--schedule {on,off,status}] [--verbose]
@@ -121,6 +122,9 @@ public static class Program
           --their-remixes       artist mode: also get remixes this artist made for
                                 other artists
           --years YEARS         only releases from these years, e.g. 1995-2005
+          --strict              for artist names others share: only accept a file
+                                whose folder shows the release or catalogue number,
+                                or whose length matches Discogs
           --formats FORMATS     allowed file types, best first, e.g. mp3,flac
                                 (default from config)
           --limit LIMIT         only the first N tracks (handy for a test run)
@@ -254,6 +258,7 @@ public static class Program
                     Kind = found.Kind, Id = found.Id, Name = found.Name, Url = found.Url, MinBitrate = minBr,
                     Formats = formats, NoRemixes = args.NoRemixes, NoCompilations = args.NoCompilations,
                     TheirRemixes = args.TheirRemixes, Years = years is null ? null : new() { years.Value.Item1, years.Value.Item2 },
+                    Strict = args.Strict,
                 };
             }
             (tracks, tl, releasesRead) = Catalog.BuildTracks(dg, job);
@@ -320,7 +325,7 @@ public static class Program
         if (todo.Count < tracks.Count)
             Console.WriteLine($"{tracks.Count - todo.Count} tracks were downloaded in an earlier run; skipping them.");
         Console.WriteLine($"\nSearching Soulseek: {string.Join(", ", formats)}; mp3 and other lossy files must be at least {minBr} kbps.");
-        var work = new Work(outDir, todo, Opts.From(cfg, minBr, formats), outcomes, misses);
+        var work = new Work(outDir, todo, Opts.From(cfg, minBr, formats, strict: job.Strict), outcomes, misses);
         if (todo.Count > 0)
         {
             Console.WriteLine("\n" + LegalNotice + "\n");

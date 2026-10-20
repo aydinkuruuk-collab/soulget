@@ -160,6 +160,21 @@ public class TracksTests
     }
 
     [Fact]
+    public void Strict_mode_for_artist_names_others_share()
+    {
+        var t = T("Katran", "Isolation", "Above The Concrete", 2022, "6:40", catno: "HANDS 312");
+        const string inAlbumFolder = @"m\Katran - Above The Concrete (2022)\04 Isolation.flac";
+        const string looseFile = @"m\Music\Katran\Isolation.flac";          // could be anyone called Katran
+        var f = new[] { "flac" };
+        Assert.Null(Judge(t, Cand(inAlbumFolder, bitrate: null, ext: "flac", duration: null), 320, f, strict: true));
+        Assert.Equal("can't confirm it's this artist", Judge(t, Cand(looseFile, bitrate: null, ext: "flac", duration: null), 320, f, strict: true));
+        Assert.Null(Judge(t, Cand(looseFile, bitrate: null, ext: "flac", duration: 403), 320, f, strict: true));   // length matches
+        Assert.Null(Judge(t, Cand(@"m\Katran\HANDS 312\Isolation.flac", bitrate: null, ext: "flac", duration: null), 320, f,
+                          strict: true));                                                                       // catalogue number in the folder
+        Assert.Null(Judge(t, Cand(looseFile, bitrate: null, ext: "flac", duration: null), 320, f));            // normal mode: fine
+    }
+
+    [Fact]
     public void Text_rules_match_python_for_tricky_characters()
     {
         Assert.Equal(new[] { "sigur", "ros" }, Text.Tokens("Sigur Rós"));

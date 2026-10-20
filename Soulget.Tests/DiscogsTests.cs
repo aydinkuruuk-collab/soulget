@@ -84,6 +84,50 @@ public class DiscogsTests
     }
 
     [Fact]
+    public void Compilation_tracks_filed_as_trackappearance_are_included()
+    {
+        const string katran = """[{"name": "Katran (3)", "id": 5780282, "join": ""}]""";
+        var dg = new FakeDiscogs(new()
+        {
+            ["/artists/5780282/releases"] = """
+                {"pagination": {"pages": 1}, "releases": [
+                  {"id": 1, "type": "release", "role": "Main", "title": "Above The Concrete", "year": 2022, "format": "CD"},
+                  {"id": 2, "type": "release", "role": "TrackAppearance", "title": "Forms Of Hands 19", "year": 2019, "format": "CD, Comp"},
+                  {"id": 3, "type": "release", "role": "Remix", "title": "RA.637", "year": 2018, "format": "File"}]}
+                """,
+            ["/releases/1"] = $$"""{"title": "Above The Concrete", "year": 2022, "artists": {{katran}}, "tracklist": [{"type_": "track", "title": "Isolation"}]}""",
+            ["/releases/2"] = $$"""
+                {"title": "Forms Of Hands 19", "year": 2019, "artists": [{"name": "Various", "join": ""}],
+                 "tracklist": [{"type_": "track", "title": "Mirror Reflection", "artists": {{katran}}},
+                               {"type_": "track", "title": "Someone Else's", "artists": [{"name": "X", "id": 9}]}]}
+                """,
+            ["/releases/3"] = """
+                {"title": "RA.637", "year": 2018, "artists": [{"name": "Tommy Four Seven", "id": 7}],
+                 "tracklist": [{"type_": "track", "title": "The Walk (Katran Remix)", "extraartists": [{"id": 5780282, "role": "Remix"}]}]}
+                """,
+        });
+        var f = new Found("artist", 5780282, "Katran", "u", new());
+        Assert.Equal(new[] { "Isolation", "Mirror Reflection" },                  // compilation track in, others' track out
+                     dg.ArtistTracks(f).Item1.All().Select(t => t.Title).OrderBy(x => x, StringComparer.Ordinal));
+        Assert.Contains("The Walk (Katran Remix)", dg.ArtistTracks(f, theirRemixes: true).Item1.All().Select(t => t.Title));
+        Assert.Equal(new[] { "Isolation" }, dg.ArtistTracks(f, compilations: false).Item1.All().Select(t => t.Title));
+    }
+
+    [Fact]
+    public void Strict_setting_is_saved_and_old_job_files_read_as_not_strict()
+    {
+        var dir = Directory.CreateTempSubdirectory("soulget-job-").FullName;
+        try
+        {
+            new Job { Kind = "artist", Id = 5780282, Name = "Katran", Formats = new() { "flac" }, Strict = true }.Save(dir);
+            Assert.True(Job.Load(dir)!.Strict);
+            File.WriteAllText(Path.Combine(dir, Job.FileName), """{"kind": "artist", "id": 1, "name": "X", "url": "u", "min_bitrate": 320, "formats": ["mp3"]}""");
+            Assert.False(Job.Load(dir)!.Strict);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
     public void What_counts_as_a_compilation_on_a_label()
     {
         Assert.False(Discogs.IsCompilation("12\", EP", "Various"));          // the label's own V/A record

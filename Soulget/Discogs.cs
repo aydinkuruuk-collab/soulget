@@ -339,8 +339,10 @@ public class Discogs
     {
         var items = Pages($"/artists/{found.Id}/releases", "releases",
                           new() { ["sort"] = "year", ["sort_order"] = "asc" });
+        // Discogs files an artist's tracks on other people's compilations as "Appearance"
+        // or, track by track, as "TrackAppearance"; both count as compilations here.
         var roles = new HashSet<string> { "Main" };
-        if (compilations) roles.Add("Appearance");
+        if (compilations) { roles.Add("Appearance"); roles.Add("TrackAppearance"); }
         if (theirRemixes) roles.Add("Remix");
         var jobs = new List<(string, JsonNode)>();
         var seen = new HashSet<string>();
@@ -377,7 +379,8 @@ public class Discogs
                 bool keep = role switch
                 {
                     "Main" => ids.Contains(found.Id),
-                    "Appearance" => J.Items(own).Any(a => J.Int(a, "id") == found.Id) || (own.Count == 0 && ids.Contains(found.Id)),
+                    "Appearance" or "TrackAppearance" =>
+                        J.Items(own).Any(a => J.Int(a, "id") == found.Id) || (own.Count == 0 && ids.Contains(found.Id)),
                     _ => J.Items(J.Arr(t, "extraartists")).Any(a => J.Int(a, "id") == found.Id &&
                                                                      Lower(J.Str(a, "role")).Contains("remix")),
                 };
