@@ -156,6 +156,90 @@ public class AppApiTests : IDisposable
         Assert.False(Schedule.ServesThisHome(new Schedule.State(true, 25200, "", "x")));
     }
 
+    // -- one folder's tracks ---------------------------------------------------------
+
+    [Fact]
+    public void Csv_reader_handles_quotes_commas_and_line_breaks()
+    {
+        var p = Path.Combine(tmp, "x.csv");
+        Files.WriteCsv(p, new[] { new object?[] { "artist", "title" }, new object?[] { "A, B", "Say \"hi\"\nagain" }, new object?[] { "C", "" } });
+        var rows = Files.ReadCsv(p);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(("A, B", "Say \"hi\"\nagain"), (rows[0]["artist"], rows[0]["title"]));
+        Assert.Equal(("C", ""), (rows[1]["artist"], rows[1]["title"]));
+    }
+
+    [Fact]
+    public void Folder_lists_every_track_with_its_status_and_reason()
+    {
+        Config.HomeOverride = tmp;
+        var music = Path.Combine(tmp, "music");
+        var folder = Path.Combine(music, "Raime");
+        var other = Path.Combine(music, "Blackest Ever Black (label)");
+        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(other);
+        var have = Tracks.MakeTrack("Raime", "This Foundry", "Raime EP", 2010)!;
+        var elsewhere = Tracks.MakeTrack("Raime", "Passed Over (Live)", "Raime EP", 2010)!;
+        var missing = Tracks.MakeTrack("Raime", "Exist", "Quarter Turns", 2012)!;
+        var gaveUp = Tracks.MakeTrack("Raime", "Soil", "Quarter Turns", 2012)!;
+        var untried = Tracks.MakeTrack("Raime", "Untitled", "Hennail", 2011)!;   // a generic title: its key includes the record
+        Catalog.WriteTracklist(new() { have, elsewhere, missing, gaveUp, untried }, Path.Combine(folder, "tracklist.csv"));
+        File.WriteAllText(Path.Combine(folder, "This Foundry.flac"), "x");
+        Manifest.Save(folder, new JsonObject { [have.Key] = new JsonObject { ["file"] = "This Foundry.flac" } });
+        File.WriteAllText(Path.Combine(other, "Passed Over.mp3"), "x");
+        Manifest.Save(other, new JsonObject { [elsewhere.Key] = new JsonObject { ["file"] = "Passed Over.mp3" } });
+        var misses = Misses.Load(folder);
+        misses.Record(missing.Key, false, "34 files seen, none suitable: bitrate too low (34)", name: missing.Display());
+        misses.Record(gaveUp.Key, false, "no results on Soulseek", at: DateTime.Now.AddDays(-30), name: gaveUp.Display());
+        misses.Save();
+
+        var cfg = Config.Parse("[retry]\ngive_up_after_days = 14\n");
+        var o = AppApi.FolderJson(cfg, folder);
+        var byTitle = o["tracks"]!.AsArray().ToDictionary(t => J.Str(t, "title"), t => t!);
+        Assert.Equal(("have", "flac"), (J.Str(byTitle["This Foundry"], "status"), J.Str(byTitle["This Foundry"], "format")));
+        Assert.Equal(("elsewhere", "in Blackest Ever Black (label)"), (J.Str(byTitle["Passed Over (Live)"], "status"), J.Str(byTitle["Passed Over (Live)"], "note")));
+        Assert.True(J.Truthy(J.Get(byTitle["Passed Over (Live)"], "remix")));
+        Assert.Equal(("missing", 1), (J.Str(byTitle["Exist"], "status"), J.Int(byTitle["Exist"], "checks")));
+        Assert.Contains("bitrate too low", J.Str(byTitle["Exist"], "note"));
+        Assert.Equal("gave_up", J.Str(byTitle["Soil"], "status"));
+        Assert.Equal("not_tried", J.Str(byTitle["Untitled"], "status"));
+        Assert.Equal(1, J.Int(o["counts"], "not_tried"));
+    }
+
+    // -- what each check did ------------------------------------------------------
+
+    [Fact]
+    public void Check_history_reads_the_timer_log_and_what_each_check_found()
+    {
+        Config.HomeOverride = tmp;
+        var music = Path.Combine(tmp, "music");
+        Directory.CreateDirectory(music);
+        File.WriteAllText(Path.Combine(tmp, "retry-output.log"), string.Join("\n",
+            "=== soulget retry check, Mon 19 Oct 2026 07:59 ===",
+            "Skipped: the drive 'MusicDrive' isn't connected.",
+            "=== soulget retry check, Tue 20 Oct 2026 14:07 (scheduled) ===",
+            "(open-file limit: 10240)",
+            "Retry check done.",
+            "=== soulget retry check, Tue 20 Oct 2026 23:08 (scheduled) ===",
+            "[ 1/9] MISS x",
+            "Unhandled exception. System.IO.DirectoryNotFoundException: Could not find a part of the path '/Volumes/MusicDrive/x/report.csv'.",
+            "   at Soulget.Files.WriteCsv(String path, IEnumerable`1 rows)", ""));
+        var at = new DateTime(2026, 10, 20, 16, 8, 0);
+        Retry.LogCheck(music, "Primate Recordings (label)", 138, 1, 137, 0, "scheduled", at);
+        Retry.LogCheck(music, "Vault Series (label)", 1, 0, 1, 0, "scheduled", at);
+        Retry.LogCheck(music, "Katran", 4, 2, 2, 0, "manual", new DateTime(2026, 10, 21, 9, 30, 0));
+
+        var cfg = Config.Parse($"[soulseek]\ndownload_folder = \"{music.Replace("\\", "\\\\")}\"\n");
+        var runs = AppApi.ChecksJson(cfg)["runs"]!.AsArray();
+        Assert.Equal(new[] { "manual:done", "scheduled:crashed", "scheduled:done", "scheduled:skipped" },
+                     runs.Select(r => $"{J.Str(r, "trigger")}:{J.Str(r, "result")}"));
+        Assert.Equal((139, 1, 2), (J.Int(runs[2], "searched"), J.Int(runs[2], "found"), runs[2]!["folders"]!.AsArray().Count));
+        Assert.Equal("the music drive went away during the check", J.Str(runs[1], "reason"));
+        Assert.Equal("the drive 'MusicDrive' isn't connected", J.Str(runs[3], "reason"));
+        Assert.Equal((4, 2), (J.Int(runs[0], "searched"), J.Int(runs[0], "found")));
+        Assert.Equal("2026-10-20T14:07:00", J.Str(runs[2], "started"));
+    }
+
     // -- progress lines -----------------------------------------------------------
 
     [Fact]

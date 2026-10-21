@@ -2,8 +2,9 @@
 
 A small Mac app around the soulget engine (the C# program one folder up): a search box, a Get button, progress,
 your folders, and a menu-bar icon. The engine is the same tested command-line soulget; the app runs
-it with `--events` (progress as JSON lines) and the app-only commands `--app-find`, `--app-status`
-and `--app-set`.
+it with `--events` (progress as JSON lines) and the app-only commands `--app-find`, `--app-status`,
+`--app-set`, `--app-folder` (a folder's tracks and why the missing ones are missing) and `--app-checks`
+(what each check for missing tracks did).
 
 - **No setup:** on first start the app makes its own Soulseek login and uses `~/Music/soulget`.
   If the command-line soulget was already set up (its timer points at its folder), the app uses

@@ -10,7 +10,8 @@ public class Args
     public int? MinBitrate;
     public bool Label, DryRun, NoRemixes, NoCompilations, TheirRemixes, Strict, Later, Queue, Rename, Yes,
                 RetryMissing, Scheduled, Verbose, Help, Version, License, Events, AppStatus, AppSet;
-    public string? Years, Formats, Album, Schedule, DumpTracks, AppFind;
+    public string? Years, Formats, Album, Schedule, DumpTracks, AppFind, AppFolder;
+    public bool AppChecks;
     public int? Limit;
     public List<string> Track = new();
 
@@ -61,6 +62,8 @@ public class Args
                 case "--app-find": a.AppFind = Value(); break;
                 case "--app-status": a.AppStatus = true; break;
                 case "--app-set": a.AppSet = true; break;
+                case "--app-folder": a.AppFolder = Value(); break;
+                case "--app-checks": a.AppChecks = true; break;
                 case "--home": Value(); break;   // read before everything else, see Main
                 case "--limit":
                     var l = Value();
@@ -90,7 +93,7 @@ public class UsageError(string message) : Exception(message);
 
 public static class Program
 {
-    public const string AppVersion = "2.1.0";
+    public const string AppVersion = "2.2.0";
     public const string Wanted = "Wanted tracks";  // folder for single tracks added with --track
 
     public const string Usage = """
@@ -198,6 +201,8 @@ public static class Program
             if (args.AppFind is not null) return AppApi.Find(cfg, args.AppFind);
             if (args.AppStatus) return AppApi.Status(cfg);
             if (args.AppSet) return AppApi.Set(Console.In.ReadToEnd());
+            if (args.AppFolder is not null) return AppApi.Folder(cfg, args.AppFolder);
+            if (args.AppChecks) return AppApi.Checks(cfg);
             return Run(cfg, args);
         }
         catch (UsageError e)
@@ -297,6 +302,9 @@ public static class Program
         Events.Emit("list", ("folder", Path.GetFileName(outDir)), ("path", outDir), ("total", tracks.Count));
         if (args.DryRun)
         {
+            Events.Emit("preview", ("folder", Path.GetFileName(outDir)), ("path", outDir), ("total", tracks.Count),
+                        ("releases", releasesRead), ("duplicates", tl.Duplicates), ("remixes", remixes),
+                        ("remixes_left_out", args.NoRemixes), ("had", Runner.SplitDone(tracks, outDir).Had.Count));
             Console.WriteLine("\nFirst tracks on the list:");
             foreach (var t in tracks.Take(25))
                 Console.WriteLine($"  {(t.Year != 0 ? t.Year.ToString() : "----")}  {t.Display()}   [{t.Release}]");
@@ -319,7 +327,7 @@ public static class Program
             var timerHere = st is { Loaded: true } && Schedule.ServesThisHome(st);
             Events.Emit("queued", ("folder", Path.GetFileName(outDir)), ("count", queued), ("had", alreadyHad), ("timer", timerHere));
             if (timerHere)
-                Console.WriteLine($"The next check (every {Retry.G(st.IntervalSeconds / 3600)} hours) will look for them. " +
+                Console.WriteLine($"The next check (every {Retry.G(st!.IntervalSeconds / 3600)} hours) will look for them. " +
                                   "See the list any time with: soulget --queue");
             else
                 Console.WriteLine("The timer is off. Search now with soulget --retry-missing, " +

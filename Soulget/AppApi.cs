@@ -246,6 +246,176 @@ public static class AppApi
         return null;
     }
 
+    // -- --app-folder: one folder's tracks, and why the missing ones are missing --------
+
+    public static int Folder(Config cfg, string folder) { Print(FolderJson(cfg, folder)); return 0; }
+
+    public static JsonObject FolderJson(Config cfg, string folder)
+    {
+        folder = Path.GetFullPath(Config.Expand(folder)).TrimEnd(Path.DirectorySeparatorChar);
+        var name = Path.GetFileName(folder);
+        var o = new JsonObject { ["name"] = name, ["path"] = folder };
+        if (Job.Load(folder) is { } job)
+            o["job"] = new JsonObject
+            {
+                ["kind"] = job.Kind, ["url"] = job.Url, ["formats"] = Events.Node(job.Formats), ["min_bitrate"] = job.MinBitrate,
+                ["strict"] = job.Strict, ["no_remixes"] = job.NoRemixes, ["no_compilations"] = job.NoCompilations,
+                ["their_remixes"] = job.TheirRemixes,
+                ["years"] = job.Years is { Count: >= 2 } y ? $"{y[0]}-{y[1]}" : null,
+            };
+        var manifest = Manifest.Load(folder);
+        var misses = File.Exists(Path.Combine(folder, Misses.FileName)) ? Misses.Load(folder) : null;
+        var days = cfg.Num("retry", "give_up_after_days", 14);
+        var elsewhere = Runner.AllDownloads(Path.GetDirectoryName(folder)!);
+        var counts = new Dictionary<string, int> { ["have"] = 0, ["elsewhere"] = 0, ["missing"] = 0, ["gave_up"] = 0, ["not_tried"] = 0 };
+        var tracks = new JsonArray();
+        foreach (var row in Files.ReadCsv(Path.Combine(folder, "tracklist.csv")))
+        {
+            string F(string k) => row.TryGetValue(k, out var v) ? v : "";
+            var year = int.TryParse(F("year"), out var yr) ? yr : 0;
+            var t = Tracks.MakeTrack(F("artist"), F("title"), F("first_release"), year);
+            if (t is null) continue;
+            var item = new JsonObject
+            {
+                ["artist"] = t.Artist, ["title"] = t.Title, ["release"] = F("first_release"), ["year"] = year,
+                ["catno"] = F("catno"), ["position"] = F("position"), ["length"] = F("length"), ["remix"] = t.IsRemix,
+            };
+            string status;
+            var file = manifest[t.Key] is JsonObject m ? J.Str(m, "file") : "";
+            if (file.Length > 0 && File.Exists(Path.Combine(folder, file)))
+            {
+                status = "have";
+                item["file"] = file;
+                item["format"] = Path.GetExtension(file).TrimStart('.').ToLowerInvariant();
+            }
+            else if (elsewhere.TryGetValue(t.Key, out var h) && h.Folder != name)
+            {
+                status = "elsewhere";
+                item["note"] = $"in {h.Folder}";
+                item["file"] = $"../{h.Folder}/{h.File}";
+            }
+            else if (misses?.Data[t.Key] is JsonObject e)
+            {
+                status = misses.GaveUp(t.Key, days) ? "gave_up" : "missing";
+                item["note"] = J.Str(e, "note");
+                item["checks"] = J.Int(e, "checks");
+                item["first_missed"] = J.Str(e, "first_missed");
+                item["last_checked"] = J.Str(e, "last_checked");
+            }
+            else status = "not_tried";
+            item["status"] = status;
+            counts[status]++;
+            tracks.Add(item);
+        }
+        o["counts"] = new JsonObject(counts.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value)));
+        o["tracks"] = tracks;
+        return o;
+    }
+
+    // -- --app-checks: what each check for missing tracks did ---------------------
+
+    public static int Checks(Config cfg) { Print(ChecksJson(cfg)); return 0; }
+
+    static readonly System.Text.RegularExpressions.Regex Header =
+        Re(@"^=== soulget retry check, \w{3} (\d{1,2} \w{3} \d{4} \d{2}:\d{2})(?: \((\w+)\))? ===");
+
+    class Run
+    {
+        public DateTime Started;
+        public string Trigger = "scheduled", Result = "unfinished", Reason = "";
+        public bool StoppedEarly;
+        public List<Dictionary<string, string>> Rows = new();
+    }
+
+    public static JsonObject ChecksJson(Config cfg, int max = 30)
+    {
+        var runs = new List<Run>();
+        // The timer's own log: every timed check, including skipped and failed ones.
+        if (File.Exists(Schedule.LogPath))
+        {
+            Run? cur = null;
+            foreach (var line in Tail(Schedule.LogPath, 4_000_000))
+            {
+                var m = Header.Match(line);
+                if (m.Success && DateTime.TryParseExact(m.Groups[1].Value, "d MMM yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture,
+                                                        System.Globalization.DateTimeStyles.None, out var started))
+                {
+                    cur = new Run { Started = started, Trigger = m.Groups[2].Success ? m.Groups[2].Value : "scheduled" };
+                    runs.Add(cur);
+                    continue;
+                }
+                if (cur is null) continue;
+                if (line.StartsWith("Unhandled exception"))
+                {
+                    cur.Result = "crashed";
+                    cur.Reason = line.Contains("DirectoryNotFound") || line.Contains("/Volumes/")
+                        ? "the music drive went away during the check" : "an unexpected error";
+                }
+                else if (cur.Result == "crashed") { }
+                else if (line.StartsWith("Skipped: ")) { cur.Result = "skipped"; cur.Reason = line["Skipped: ".Length..].TrimEnd('.'); }
+                else if (line.StartsWith("Could not log in")) { cur.Result = "login_failed"; cur.Reason = line.Split(':', 2).Last().Trim(); }
+                else if (line.StartsWith("Nothing left to look for") || line.StartsWith("Nothing to retry yet")) cur.Result = "nothing";
+                else if (line.StartsWith("Retry check done")) cur.Result = "done";
+                else if (line.StartsWith("Stopping") || line.StartsWith("\nStopping")) cur.StoppedEarly = true;
+            }
+        }
+        // What each check found, per folder (also checks started by hand, which aren't in the timer's log).
+        try
+        {
+            var root = cfg.DownloadRoot();
+            var rows = Files.ReadCsv(Path.Combine(root, Retry.RetryLog));
+            var scheduled = runs.OrderBy(r => r.Started).ToList();
+            foreach (var row in rows)
+            {
+                if (!DateTime.TryParseExact(row.GetValueOrDefault("when", ""), "yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture,
+                                            System.Globalization.DateTimeStyles.None, out var when)) continue;
+                if (row.GetValueOrDefault("trigger", "") == "manual")
+                {
+                    var r = runs.FirstOrDefault(x => x.Trigger == "manual" && x.Started == when);
+                    if (r is null) runs.Add(r = new Run { Started = when, Trigger = "manual", Result = "done" });
+                    r.Rows.Add(row);
+                    continue;
+                }
+                // A timed check logs its folders when it finishes: give them to the last check that started before.
+                var owner = scheduled.LastOrDefault(x => x.Started <= when);
+                if (owner is not null) owner.Rows.Add(row);
+            }
+        }
+        catch (DriveMissing) { }
+        bool Busy() { try { return BusyPid(cfg.DownloadRoot()) is not null; } catch (DriveMissing) { return false; } }
+        if (runs.OrderByDescending(r => r.Started).FirstOrDefault() is { Result: "unfinished" } newest && Busy()) newest.Result = "running";
+
+        int N(Dictionary<string, string> r, string k) => int.TryParse(r.GetValueOrDefault(k, ""), out var n) ? n : 0;
+        var list = new JsonArray();
+        foreach (var r in runs.OrderByDescending(r => r.Started).Take(max))
+        {
+            list.Add(new JsonObject
+            {
+                ["started"] = r.Started.ToString("yyyy-MM-ddTHH:mm:ss"), ["trigger"] = r.Trigger, ["result"] = r.Result,
+                ["reason"] = r.Reason, ["stopped_early"] = r.StoppedEarly,
+                ["searched"] = r.Rows.Sum(x => N(x, "searched")), ["found"] = r.Rows.Sum(x => N(x, "found")),
+                ["still_missing"] = r.Rows.Sum(x => N(x, "still_missing")),
+                ["folders"] = new JsonArray(r.Rows.Select(x => (JsonNode)new JsonObject
+                {
+                    ["folder"] = x.GetValueOrDefault("folder", ""), ["searched"] = N(x, "searched"), ["found"] = N(x, "found"),
+                    ["still_missing"] = N(x, "still_missing"),
+                }).ToArray()),
+            });
+        }
+        return new JsonObject { ["runs"] = list };
+    }
+
+    /// <summary>The last lines of a file (only its end is read, so a big log stays quick).</summary>
+    static IEnumerable<string> Tail(string path, long bytes)
+    {
+        using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var start = Math.Max(0, f.Length - bytes);
+        f.Seek(start, SeekOrigin.Begin);
+        using var r = new StreamReader(f, Encoding.UTF8);
+        if (start > 0) r.ReadLine();   // a partial line
+        while (r.ReadLine() is { } line) yield return line;
+    }
+
     // -- --app-set: change config.toml, keeping its comments ---------------------
 
     /// <summary>Reads {"section.key": value, ...} from stdin. Values: text, whole numbers, true/false,

@@ -19,7 +19,15 @@ Install
 Use
   - Type a name in the box at the top and press Return.
   - Click Get next to the right artist, label or album. The arrow next to
-    Get has more choices (originals only, no compilations, or "later").
+    Get has more choices: originals only, no compilations, "Preview the
+    track list first" (see every track, and how many are remixes, before
+    downloading), and "More options" (only certain years, a different
+    quality, and "strict" for names other artists share).
+  - Click a folder under "Your music" to see its tracks: which you have,
+    which are missing, and why (for example "nobody had it", or "34 copies
+    seen, none good enough: quality too low").
+  - "History", next to the 7-hour check line, shows what each check found,
+    and which ones were skipped (for example when a drive wasn't connected).
   - Music goes to the Music folder, in "soulget" (change it in Settings).
   - Missing tracks: soulget can look again every 7 hours by itself
     (Settings > General). Who has which file depends on who is online.

@@ -84,6 +84,44 @@ public static class Files
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
     }
 
+    /// <summary>Read a CSV file with a header row (quoted fields may hold commas, quotes and line breaks).</summary>
+    public static List<Dictionary<string, string>> ReadCsv(string path)
+    {
+        var rows = new List<List<string>>();
+        if (!File.Exists(path)) return new();
+        var text = File.ReadAllText(path);
+        var row = new List<string>();
+        var field = new StringBuilder();
+        bool quoted = false, any = false;
+        for (int i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+            if (quoted)
+            {
+                if (ch == '"' && i + 1 < text.Length && text[i + 1] == '"') { field.Append('"'); i++; }
+                else if (ch == '"') quoted = false;
+                else field.Append(ch);
+                continue;
+            }
+            switch (ch)
+            {
+                case '"': quoted = true; any = true; break;
+                case ',': row.Add(field.ToString()); field.Clear(); any = true; break;
+                case '\r': break;
+                case '\n':
+                    if (any || field.Length > 0) { row.Add(field.ToString()); rows.Add(row); }
+                    row = new(); field.Clear(); any = false;
+                    break;
+                default: field.Append(ch); any = true; break;
+            }
+        }
+        if (any || field.Length > 0) { row.Add(field.ToString()); rows.Add(row); }
+        if (rows.Count == 0) return new();
+        var header = rows[0];
+        return rows.Skip(1).Select(r => header.Select((h, i) => (h, v: i < r.Count ? r[i] : ""))
+                                              .ToDictionary(x => x.h, x => x.v)).ToList();
+    }
+
     /// <summary>Add rows to the end of a CSV file (Python's csv writer in append mode).</summary>
     public static void AppendCsv(string path, IEnumerable<IEnumerable<object?>> rows)
     {

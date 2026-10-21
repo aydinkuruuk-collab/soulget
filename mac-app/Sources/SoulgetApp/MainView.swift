@@ -29,6 +29,12 @@ struct MainView: View {
         }
         .frame(minWidth: 640, minHeight: 540)
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(item: $model.openFolder) { f in FolderSheet(folder: f).environmentObject(model) }
+        .background(EmptyView().sheet(isPresented: $model.showHistory) { HistorySheet().environmentObject(model) })
+        .background(EmptyView().sheet(item: $model.optionsItem) { item in OptionsSheet(item: item).environmentObject(model) })
+        .background(EmptyView().sheet(item: $model.preview, onDismiss: { model.closePreview(keep: false) }) { p in
+            PreviewSheet(preview: p).environmentObject(model)
+        })
     }
 }
 
@@ -158,12 +164,15 @@ struct GetButton: View {
     var body: some View {
         Menu {
             Button("Get everything") { model.get(item) }
+            Button("Originals only (no remixes or live versions)") { model.get(item, .originals) }
             if !item.isRecord {
-                Button("Originals only (no remixes or live versions)") { model.get(item, .originals) }
-                Button("Leave out compilations and DJ mixes") { model.get(item, .noCompilations) }
+                Button("Leave out compilations and DJ mixes") { model.get(item, .noComps) }
             }
             Divider()
-            Button("Don't download now: add to the list for the 7-hour check") { model.get(item, .later) }
+            Button("Preview the track list first…") { model.startPreview(item) }
+            Button("More options…") { model.optionsItem = item }
+            Divider()
+            Button("Don't download now: add to the list for the 7-hour check") { model.get(item, .laterOnly) }
         } label: {
             Text(model.folder(for: item) != nil ? "Get missing" : "Get")
         } primaryAction: {
@@ -391,26 +400,29 @@ struct TimerLine: View {
                     if s.busy != nil, model.run == nil {
                         Text("A check for missing tracks is running right now.")
                     } else if s.timer.active {
-                        Text("Missing tracks are searched for again every \(Int(s.everyHours)) hours" + lastCheck(s))
+                        Text("Missing tracks are searched for again every \(Int(s.everyHours)) hours" + lastCheck())
                     } else {
                         Text("Automatic checks for missing tracks are off.")
                     }
                 }
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
                 if !s.timer.active, s.busy == nil || model.run != nil {
                     Button("Turn On") { Task { await model.setTimer(true) } }
                         .buttonStyle(.link)
                         .disabled(model.working || !s.hasPassword)
+                }
+                if !model.checks.isEmpty {
+                    Button("History") { model.showHistory = true }.buttonStyle(.link)
                 }
             }
             .font(.callout)
         }
     }
 
-    func lastCheck(_ s: Status) -> String {
-        guard let last = s.lastChecks?.last,
-              let date = DateFormatter.checkTime.date(from: last.when) else { return "." }
-        return " · last check \(RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date()))."
+    func lastCheck() -> String {
+        guard let last = model.checks.first, let date = last.date else { return "." }
+        return " · last check \(ago(date)): \(last.line)."
     }
 }
 
@@ -434,10 +446,15 @@ struct FolderRow: View {
             Button { NSWorkspace.shared.open(URL(fileURLWithPath: folder.path)) } label: { Image(systemName: "folder") }
                 .buttonStyle(.borderless)
                 .help("Open in Finder")
+            Image(systemName: "chevron.right").foregroundStyle(.tertiary).font(.caption)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onTapGesture { model.openFolder = folder }
+        .help("Click to see the tracks: which you have, which are missing and why")
         .contextMenu {
+            Button("Show Tracks") { model.openFolder = folder }
             Button("Open in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: folder.path)) }
             if let u = URL(string: folder.url), !folder.url.isEmpty {
                 Button("Open on Discogs") { NSWorkspace.shared.open(u) }

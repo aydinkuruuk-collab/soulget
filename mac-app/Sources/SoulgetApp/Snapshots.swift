@@ -66,8 +66,70 @@ enum Snapshots {
                 await shoot(w, dir, "5-settings-\(tab)")
                 w.close()
             }
+            // 6-9. The new screens, each in its own window.
+            m.checks = sampleChecks()
+            let folder = sample(folders: true).folders[1]
+            let screens: [(String, AnyView)] = [
+                ("6-folder", AnyView(FolderSheet(folder: folder, detail: sampleFolder()))),
+                ("7-history", AnyView(HistorySheet())),
+                ("8-options", AnyView(OptionsSheet(item: sampleResults()[1], options: GetOptions(strict: true, yearsOn: true, yearFrom: 2014, yearTo: 2021)))),
+                ("9-preview", AnyView(PreviewSheet(preview: samplePreview()))),
+            ]
+            for (name, view) in screens {
+                let w = NSWindow(contentViewController: NSHostingController(rootView: view.environmentObject(m)))
+                w.styleMask = [.titled]
+                w.setFrameOrigin(NSPoint(x: 140, y: 100))
+                w.orderFront(nil)
+                await shoot(w, dir, name)
+                w.close()
+            }
             NSApp.terminate(nil)
         }
+    }
+
+    static func decode<T: Decodable>(_ json: String) -> T {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return try! d.decode(T.self, from: Data(json.utf8))
+    }
+
+    static func sampleFolder() -> FolderDetail {
+        decode("""
+            {"name":"Primate (label)","path":"/tmp","job":{"kind":"label","url":"https://www.discogs.com/label/1","formats":["flac","wav","aiff","mp3"],
+             "min_bitrate":320,"strict":false,"no_remixes":false,"no_compilations":true,"their_remixes":false,"years":null},
+             "counts":{"have":3,"elsewhere":1,"missing":3,"gave_up":1,"not_tried":1},
+             "tracks":[
+              {"artist":"Mould Impression","title":"Broken Monitor (6 Hours)","release":"Lenk's 808","year":1996,"catno":"PRMT 010","position":"A1","length":"6:12","remix":false,"status":"missing","note":"34 files seen, none suitable: bitrate too low (20), format (14)","checks":5},
+              {"artist":"Mould Impression","title":"Lenk's 808","release":"Lenk's 808","year":1996,"catno":"PRMT 010","position":"B1","length":"5:40","remix":false,"status":"missing","note":"no results on Soulseek","checks":9},
+              {"artist":"Steve Stoll","title":"Damage (Primate Remix)","release":"Damage","year":1997,"catno":"PRMT 014","position":"B2","length":"6:01","remix":true,"status":"missing","note":"1 users tried, none delivered (last: didn't start within 120s)","checks":2},
+              {"artist":"Joe Mitchell","title":"Dusk","release":"Sunfire EP","year":1998,"catno":"PRMT 022","position":"A2","length":"","remix":false,"status":"gave_up","note":"no results on Soulseek","checks":40},
+              {"artist":"Joe Mitchell","title":"Untitled","release":"Sunfire EP","year":1998,"catno":"PRMT 022","position":"B3","length":"","remix":false,"status":"not_tried"},
+              {"artist":"Mould Impression","title":"Pressure","release":"Primate 1","year":1995,"catno":"PRMT 001","position":"A1","length":"7:02","remix":false,"status":"have","file":"x.flac","format":"flac"},
+              {"artist":"Mould Impression","title":"Low Grade","release":"Primate 1","year":1995,"catno":"PRMT 001","position":"B1","length":"6:44","remix":false,"status":"have","file":"x.flac","format":"flac"},
+              {"artist":"Cari Lekebusch","title":"Obtuse","release":"Primate 5","year":1996,"catno":"PRMT 005","position":"A","length":"","remix":false,"status":"have","file":"x.mp3","format":"mp3"},
+              {"artist":"Mould Impression","title":"Twisted","release":"Primate 3","year":1995,"catno":"PRMT 003","position":"B2","length":"","remix":false,"status":"elsewhere","note":"in Mould Impression"}]}
+            """)
+    }
+
+    static func sampleChecks() -> [CheckRun] {
+        func f(_ name: String, _ searched: Int, _ found: Int) -> String { "{\"folder\":\"\(name)\",\"searched\":\(searched),\"found\":\(found),\"still_missing\":\(searched - found)}" }
+        return decode("""
+            [{"started":"2026-10-21T06:08:00","trigger":"scheduled","result":"done","reason":"","stopped_early":false,"searched":587,"found":6,"still_missing":581,
+              "folders":[\(f("Primate (label)", 138, 4)),\(f("Disturbance (label)", 195, 2)),\(f("Katran", 4, 0))]},
+             {"started":"2026-10-20T23:08:00","trigger":"scheduled","result":"crashed","reason":"the music drive went away during the check","stopped_early":false,"searched":0,"found":0,"still_missing":0,"folders":[]},
+             {"started":"2026-10-20T14:07:00","trigger":"scheduled","result":"done","reason":"","stopped_early":false,"searched":587,"found":1,"still_missing":586,"folders":[\(f("Primate (label)", 138, 1))]},
+             {"started":"2026-10-20T11:30:00","trigger":"manual","result":"done","reason":"","stopped_early":false,"searched":12,"found":0,"still_missing":12,"folders":[\(f("Katran", 12, 0))]},
+             {"started":"2026-10-19T07:59:00","trigger":"scheduled","result":"skipped","reason":"the drive 'MusicDrive' isn't connected","stopped_early":false,"searched":0,"found":0,"still_missing":0,"folders":[]},
+             {"started":"2026-10-17T08:11:00","trigger":"scheduled","result":"done","reason":"","stopped_early":false,"searched":768,"found":89,"still_missing":679,"folders":[\(f("Primate (label)", 402, 60))]}]
+            """)
+    }
+
+    static func samplePreview() -> PreviewState {
+        var p = PreviewState(item: sampleResults()[0], options: GetOptions())
+        p.summary = PreviewSummary(total: 87, releases: 45, duplicates: 130, remixes: 12, had: 3, remixesLeftOut: false, path: "/tmp")
+        p.tracks = sampleFolder()
+        p.finished = true
+        return p
     }
 
     static func shoot(_ window: NSWindow, _ dir: URL, _ name: String) async {

@@ -128,8 +128,6 @@ enum Quality: String, CaseIterable, Identifiable {
     static func from(_ formats: [String]) -> Quality? { allCases.first { $0.formats == formats } }
 }
 
-enum GetOption { case everything, originals, noCompilations, later }
-
 // MARK: - Runs
 
 struct Request: Identifiable, Equatable {
@@ -239,6 +237,11 @@ final class AppModel: ObservableObject {
     @Published var loginMode: LoginMode = .auto
     @Published var settingsError: String?
     @Published var working = false   // a settings change is being saved
+    @Published var checks: [CheckRun] = []
+    @Published var openFolder: Status.Folder?
+    @Published var showHistory = false
+    @Published var optionsItem: FoundItem?
+    @Published var preview: PreviewState?
 
     private(set) var engine: Engine?
     private var process: Process?
@@ -246,6 +249,7 @@ final class AppModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     private var loginRetries = 0
     private var whenIdle: (() -> Void)?
+    private var previewProcess: Process?
     var demo = false   // screenshots: no engine
 
     var isRunning: Bool { run != nil }
@@ -268,6 +272,7 @@ final class AppModel: ObservableObject {
         await refresh()
         await ensureLogin()
         ready = status != nil
+        await loadChecks()
         Task { await keepStatusFresh() }
     }
 
@@ -298,10 +303,24 @@ final class AppModel: ObservableObject {
     }
 
     private func keepStatusFresh() async {
+        var n = 0
         while true {
             try? await Task.sleep(nanoseconds: 30_000_000_000)
+            n += 1
             if run == nil { await refresh() }
+            if n % 10 == 0 { await loadChecks() }   // a timed check may have run
         }
+    }
+
+    func loadChecks() async {
+        guard let engine else { return }
+        struct Answer: Decodable { var runs: [CheckRun] }
+        if let a = decodeLastJSON((await engine.run(["--app-checks"])).out, as: Answer.self) { checks = a.runs }
+    }
+
+    func loadFolder(_ path: String) async -> FolderDetail? {
+        guard let engine else { return nil }
+        return decodeLastJSON((await engine.run(["--app-folder", path])).out, as: FolderDetail.self)
     }
 
     // MARK: search
@@ -345,17 +364,82 @@ final class AppModel: ObservableObject {
 
     // MARK: downloads
 
-    func get(_ item: FoundItem, _ option: GetOption = .everything) {
-        var args = item.isRecord ? ["--album", item.url] : [item.url]
-        switch option {
-        case .everything: break
-        case .originals: args.append("--no-remixes")
-        case .noCompilations: args.append("--no-compilations")
-        case .later: args.append("--later")
-        }
-        args.append("--events")
+    func get(_ item: FoundItem, _ options: GetOptions = .everything) {
         let what = item.kind == "label" ? "the \(item.name) label" : item.name
-        enqueue(Request(title: option == .later ? "Adding \(what) to the list" : "Getting \(what)", args: args, kind: .get))
+        enqueue(Request(title: (options.later ? "Adding \(what) to the list" : "Getting \(what)") + options.label,
+                        args: options.args(for: item) + ["--events"], kind: .get))
+    }
+
+    // MARK: preview (reads Discogs only: no login, so it runs alongside downloads)
+
+    func startPreview(_ item: FoundItem, _ options: GetOptions = .everything) {
+        guard let engine else { return }
+        closePreview(keep: false)
+        var o = options
+        o.later = false
+        preview = PreviewState(item: item, options: o)
+        do {
+            previewProcess = try engine.start(o.args(for: item) + ["--dry-run", "--events"],
+                                              onLine: { [weak self] line in self?.previewLine(line) },
+                                              onExit: { [weak self] code in Task { await self?.previewDone(code) } })
+        } catch { preview?.error = "Couldn't start: \(error.localizedDescription)" }
+    }
+
+    private func previewLine(_ line: String) {
+        guard var p = preview else { return }
+        if line.hasPrefix("@@ ") {
+            guard let e = try? JSONSerialization.jsonObject(with: Data(line.dropFirst(3).utf8)) as? [String: Any] else { return }
+            func s(_ k: String) -> String { e[k] as? String ?? "" }
+            func n(_ k: String) -> Int { (e[k] as? NSNumber)?.intValue ?? 0 }
+            switch s("ev") {
+            case "found": p.phase = "Found on Discogs: \(s("name")). Reading its records…"
+            case "discogs": p.pages = (0, n("pages")); p.phase = "Reading \(n("pages")) record pages on Discogs (about \(n("minutes")) min the first time)"
+            case "discogs_progress": p.pages = (n("done"), n("of"))
+            case "list": p.phase = "Making the list…"
+            case "preview":
+                p.summary = PreviewSummary(total: n("total"), releases: n("releases"), duplicates: n("duplicates"),
+                                           remixes: n("remixes"), had: n("had"),
+                                           remixesLeftOut: (e["remixes_left_out"] as? Bool) ?? false, path: s("path"))
+            case "error": p.error = s("message")
+            default: break
+            }
+        } else if !line.trimmingCharacters(in: .whitespaces).isEmpty {
+            p.detail = line.trimmingCharacters(in: .whitespaces)
+        }
+        preview = p
+    }
+
+    private func previewDone(_ code: Int32) async {
+        previewProcess = nil
+        guard var p = preview else { return }
+        p.finished = true
+        if let s = p.summary {
+            p.tracks = await loadFolder(s.path)
+            if p.tracks == nil { p.error = "Couldn't read the track list." }
+        } else if p.error == nil {
+            p.error = code == 0 ? "Discogs gave no track list." : "Couldn't read the track list (code \(code))."
+        }
+        if preview?.id == p.id { preview = p }
+    }
+
+    /// keep: the folder is about to be used. Otherwise a folder made only for the preview is removed again.
+    func closePreview(keep: Bool) {
+        previewProcess?.interrupt()
+        previewProcess = nil
+        if !keep, let path = preview?.summary?.path {
+            let fm = FileManager.default
+            let files = (try? fm.contentsOfDirectory(atPath: path)) ?? []
+            if files.allSatisfy({ $0 == "tracklist.csv" || $0 == ".DS_Store" }) { try? fm.removeItem(atPath: path) }
+        }
+        preview = nil
+    }
+
+    func getFromPreview(originalsOnly: Bool) {
+        guard let p = preview else { return }
+        var o = p.options
+        if originalsOnly { o.originalsOnly = true }
+        closePreview(keep: true)
+        get(p.item, o)
     }
 
     func getAgain(_ folder: Status.Folder) {
@@ -545,7 +629,11 @@ final class AppModel: ObservableObject {
         if r.request.kind == .get || (r.retryFound ?? 0) > 0 { notify(r.request.title, text) }
         run = nil
         if let cb = whenIdle { whenIdle = nil; cb(); return }
-        Task { await refresh() }
+        let wasRetry = r.request.kind == .retry
+        Task {
+            await refresh()
+            if wasRetry { await loadChecks() }
+        }
         if !upNext.isEmpty { start(upNext.removeFirst()) }
     }
 

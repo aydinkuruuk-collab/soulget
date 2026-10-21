@@ -5,7 +5,7 @@
 # Needs Xcode (or its command line tools) and the .NET 10 SDK.
 set -eu
 cd "$(dirname "$0")"
-VERSION=2.1.0
+VERSION=2.2.0
 # The engine's source: ../standalone here, the repository's top folder on GitHub, ../engine in the zip.
 for e in ../standalone ../engine ..; do
   if [ -f "$e/Soulget/Soulget.csproj" ]; then ENGINE=$e; break; fi
