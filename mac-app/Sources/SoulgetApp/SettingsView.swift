@@ -51,6 +51,12 @@ struct GeneralSettings: View {
                 }
                 .pickerStyle(.radioGroup)
                 .labelsHidden()
+                Picker("Lowest MP3 quality", selection: minBitrateBinding) {
+                    ForEach(Quality.bitrates, id: \.self) { kbps in Text(Quality.bitrateLabel(kbps)).tag(kbps) }
+                    if let b = model.status?.minBitrate, !Quality.bitrates.contains(b) { Text("\(b) kbps").tag(b) }
+                }
+                Text("Lower lets soulget take an MP3 below 320 kbps when nobody has a better copy; better copies still come first. A track is downloaded once, so a lower-quality copy isn't replaced later. Lossless files always pass.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let s = model.status, Quality.from(s.formats) == nil {
                     Text("Your own setting from the settings file: \(s.formats.joined(separator: ", ")), at least \(s.minBitrate) kbps.")
                         .font(.callout).foregroundStyle(.secondary)
@@ -66,12 +72,16 @@ struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 660)
+        .frame(height: 760)
     }
 
     var qualityBinding: Binding<Quality?> {
         Binding(get: { model.status.flatMap { Quality.from($0.formats) } },
                 set: { q in if let q { Task { await model.setQuality(q) } } })
+    }
+
+    var minBitrateBinding: Binding<Int> {
+        Binding(get: { model.status?.minBitrate ?? 320 }, set: { kbps in Task { await model.setMinBitrate(kbps) } })
     }
 
     var timerBinding: Binding<Bool> {
@@ -201,6 +211,7 @@ struct AboutSettings: View {
                     }
                 }
                 HStack {
+                    Button("What's New") { openBundled("CHANGELOG.txt") }
                     Button("License") { openBundled("LICENSE.txt") }
                     Button("Notices") { openBundled("NOTICE.txt") }
                     Link("Source Code", destination: URL(string: "https://github.com/aydinkuruuk-collab/soulget")!)

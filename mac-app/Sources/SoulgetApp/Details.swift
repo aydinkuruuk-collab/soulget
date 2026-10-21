@@ -36,6 +36,7 @@ struct JobInfo: Decodable {
         if theirRemixes { parts.append("with their remixes for others") }
         if strict { parts.append("strict name matching") }
         if let years { parts.append(years.replacingOccurrences(of: "-", with: "–")) }
+        if minBitrate < 320 { parts.append("MP3 down to \(minBitrate) kbps") }
         return parts.joined(separator: " · ")
     }
 }
@@ -105,6 +106,7 @@ struct GetOptions: Equatable {
     var yearFrom = 1990
     var yearTo = Calendar.current.component(.year, from: Date())
     var quality: Quality?    // nil: as in Settings
+    var minBitrate: Int?     // nil: as in Settings
 
     static let everything = GetOptions()
     static let originals = GetOptions(originalsOnly: true)
@@ -119,6 +121,7 @@ struct GetOptions: Equatable {
         if strict, item.kind == "artist" { a.append("--strict") }
         if yearsOn, !item.isRecord { a += ["--years", "\(min(yearFrom, yearTo))-\(max(yearFrom, yearTo))"] }
         if let q = quality { a += ["--formats", q.formats.joined(separator: ",")] }
+        if let kbps = minBitrate { a += ["--min-bitrate", String(kbps)] }
         if later { a.append("--later") }
         return a
     }
@@ -131,6 +134,7 @@ struct GetOptions: Equatable {
         if strict { parts.append("strict") }
         if yearsOn { parts.append("\(min(yearFrom, yearTo))–\(max(yearFrom, yearTo))") }
         if let q = quality { parts.append(q.title.lowercased()) }
+        if let kbps = minBitrate, kbps < 320 { parts.append("MP3 down to \(kbps) kbps") }
         return parts.isEmpty ? "" : " (\(parts.joined(separator: ", ")))"
     }
 }
@@ -207,6 +211,29 @@ struct FolderSheet: View {
                     .padding(.horizontal, 18).padding(.bottom, 10)
             }
 
+            if let d = detail, let job = d.job, lowQuality(d) > 0, !folder.url.isEmpty {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "dial.low").foregroundStyle(.orange)
+                    Text("For \(lowQuality(d)) of the missing tracks, people do have copies, but below the \(job.minBitrate) kbps this folder asks for.")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Menu("Accept Lower Quality") {
+                        ForEach(Quality.bitrates.filter { $0 < job.minBitrate }, id: \.self) { kbps in
+                            Button("Down to \(kbps) kbps") {
+                                Task { await model.getAgain(folder, minBitrate: kbps) }
+                                dismiss()
+                            }
+                        }
+                    }
+                    .fixedSize()
+                    .disabled(!model.ready && !model.demo)
+                    .help("Searches this folder again, now also taking MP3s down to that quality. Saved for this folder, so the 7-hour check does the same. Better copies still come first.")
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.12)))
+                .padding(.horizontal, 18).padding(.bottom, 10)
+            }
+
             HStack {
                 Picker("Show", selection: $filter) {
                     Text("Missing (\(detail?.missingCount ?? folder.looking))").tag("missing")
@@ -247,7 +274,7 @@ struct FolderSheet: View {
             HStack {
                 if let d = detail, d.missingCount > 0, !folder.url.isEmpty {
                     Button("Search for the \(d.missingCount) missing tracks now") {
-                        model.getAgain(folder)
+                        Task { await model.getAgain(folder) }
                         dismiss()
                     }
                     .disabled(!model.ready)
@@ -272,6 +299,11 @@ struct FolderSheet: View {
         if folder.looking > 0 { parts.append("still looking for \(folder.looking)") }
         if folder.gaveUp > 0 { parts.append("\(folder.gaveUp) given up on") }
         return parts.joined(separator: " · ")
+    }
+
+    /// Missing tracks that were only turned down for being below the folder's minimum MP3 quality.
+    func lowQuality(_ d: FolderDetail) -> Int {
+        d.tracks.filter { $0.isMissing && ($0.note ?? "").contains("bitrate too low") }.count
     }
 
     func shown(_ d: FolderDetail) -> [FolderTrack] {
@@ -533,6 +565,12 @@ struct OptionsSheet: View {
                         ForEach(Quality.allCases) { q in Text("\(q.title): \(q.detail)").tag(Optional(q)) }
                     }
                     .labelsHidden()
+                    Picker("Lowest MP3 quality", selection: $options.minBitrate) {
+                        Text("As in Settings (\(model.status?.minBitrate ?? 320) kbps)").tag(Int?.none)
+                        ForEach(Quality.bitrates, id: \.self) { kbps in Text(Quality.bitrateLabel(kbps)).tag(Optional(kbps)) }
+                    }
+                    Text("Lower lets soulget take an MP3 below 320 kbps when nobody has a better copy. Better copies still come first.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Section {
                     Toggle("Don't download now: add to the list for the 7-hour check", isOn: $options.later)
@@ -555,7 +593,7 @@ struct OptionsSheet: View {
             }
             .padding(14)
         }
-        .frame(width: 560, height: 700)
+        .frame(width: 560, height: 760)
         .disabled(!model.ready && !model.demo)
     }
 }

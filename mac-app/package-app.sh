@@ -19,11 +19,12 @@ cp "Resources/READ ME FIRST.txt" "$stage/"
 cp "$ENGINE/LICENSE" "$stage/LICENSE.txt"
 cp "$ENGINE/NOTICE" "$stage/NOTICE.txt"
 cp "$ENGINE/THIRD-PARTY-NOTICES.txt" "$stage/"
+cp "$ENGINE/CHANGELOG.md" "$stage/WHAT'S NEW.txt"
 
 # The source: the engine (with the Soulseek.NET source it uses) and this app.
 src="$stage/source"
 mkdir -p "$src/engine/Soulget" "$src/engine/Soulget.Tests" "$src/mac-app/Sources/SoulgetApp" "$src/mac-app/Resources"
-cp -R "$ENGINE/LICENSE" "$ENGINE/NOTICE" "$ENGINE/THIRD-PARTY-NOTICES.txt" "$ENGINE/README.md" \
+cp -R "$ENGINE/LICENSE" "$ENGINE/NOTICE" "$ENGINE/THIRD-PARTY-NOTICES.txt" "$ENGINE/README.md" "$ENGINE/CHANGELOG.md" \
       "$ENGINE/config.example.toml" "$ENGINE/build.sh" "$ENGINE/package.sh" "$ENGINE/third-party" "$src/engine/"
 cp "$ENGINE"/Soulget/*.cs "$ENGINE/Soulget/Soulget.csproj" "$src/engine/Soulget/"
 cp "$ENGINE"/Soulget.Tests/*.cs "$ENGINE/Soulget.Tests/Soulget.Tests.csproj" "$src/engine/Soulget.Tests/"

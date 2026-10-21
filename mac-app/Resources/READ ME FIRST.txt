@@ -36,9 +36,11 @@ Use
 
 Settings (soulget menu > Settings)
   - General: music folder, quality (lossless first is the default), the
-    7-hour check.
+    lowest MP3 quality (320 kbps unless you lower it), the 7-hour check.
   - Soulseek: the automatic login, or your own Soulseek name.
   - Discogs: an optional free key, for pictures and faster reading.
+
+What changed in each version: see "WHAT'S NEW.txt" (or Settings > About).
 
 Needs macOS 13 (Ventura) or later, on a Mac with an Apple chip or Intel.
 

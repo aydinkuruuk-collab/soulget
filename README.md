@@ -65,6 +65,7 @@ on Windows (or put the folder on your PATH and just type `soulget`).
 | `... --later` | don't search now: put it all on the list for the timer (see below) |
 | `... --dry-run` | only build the track list and show it; download nothing |
 | `... --limit 5` | only the first 5 tracks (good for a first test) |
+| `... --min-bitrate 192` | lowest MP3 quality to accept, like the number after the name (also works with `--album`) |
 | `... --no-remixes` | originals only: skip remixes, live and alternate versions |
 | `... --years 1995-2002` | only releases from those years |
 | `... --formats flac,wav,mp3` | allowed file types, best first (default: mp3, then flac). Every copy in an earlier format is tried before any later one |

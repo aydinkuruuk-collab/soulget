@@ -65,6 +65,11 @@ public class Args
                 case "--app-folder": a.AppFolder = Value(); break;
                 case "--app-checks": a.AppChecks = true; break;
                 case "--home": Value(); break;   // read before everything else, see Main
+                case "--min-bitrate":
+                    var mb = Value();
+                    a.MinBitrate = int.TryParse(mb, out var mbn) && mbn > 0 ? mbn
+                        : throw new UsageError($"argument --min-bitrate: invalid int value: '{mb}'");
+                    break;
                 case "--limit":
                     var l = Value();
                     a.Limit = int.TryParse(l, out var n) ? n : throw new UsageError($"argument --limit: invalid int value: '{l}'");
@@ -82,7 +87,7 @@ public class Args
         }
         if (positional.Count > 2) throw new UsageError($"unrecognized arguments: {string.Join(" ", positional.Skip(2))}");
         if (positional.Count >= 1) a.Name = positional[0];
-        if (positional.Count == 2)
+        if (positional.Count == 2 && a.MinBitrate is null)
             a.MinBitrate = int.TryParse(positional[1], out var br) ? br
                 : throw new UsageError($"argument min_bitrate: invalid int value: '{positional[1]}'");
         return a;
@@ -93,13 +98,13 @@ public class UsageError(string message) : Exception(message);
 
 public static class Program
 {
-    public const string AppVersion = "2.2.0";
+    public const string AppVersion = "2.3.0";
     public const string Wanted = "Wanted tracks";  // folder for single tracks added with --track
 
     public const string Usage = """
         usage: soulget [-h] [--label] [--dry-run] [--no-remixes] [--no-compilations]
                        [--their-remixes] [--years YEARS] [--strict] [--formats FORMATS]
-                       [--limit LIMIT] [--album "ARTIST - TITLE"]
+                       [--limit LIMIT] [--min-bitrate KBPS] [--album "ARTIST - TITLE"]
                        [--track "ARTIST - TITLE"] [--later] [--queue] [--rename]
                        [--retry-missing] [--schedule {on,off,status}] [--verbose]
                        [name] [min_bitrate]
@@ -136,6 +141,8 @@ public static class Program
           --formats FORMATS     allowed file types, best first, e.g. mp3,flac
                                 (default from config)
           --limit LIMIT         only the first N tracks (handy for a test run)
+          --min-bitrate KBPS    lowest acceptable bitrate, same as the min_bitrate
+                                number (also works with --album and --track)
           --album "ARTIST - TITLE"
                                 one album, EP or single instead of a whole
                                 discography (or paste its Discogs master/release

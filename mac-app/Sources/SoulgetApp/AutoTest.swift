@@ -56,8 +56,15 @@ enum AutoTest {
             NSApp.terminate(nil)
             return
         }
-        say("get: \(item.name) (\(item.kind)) option \(optionName)")
-        m.get(item, option)
+        if optionName == "again", let f = m.folder(for: item) {
+            // "Get missing" on a folder you have: its own saved settings, plus -autotestMinBitrate if given.
+            let kbps = d.integer(forKey: "autotestMinBitrate")
+            say("again: \(f.name) min bitrate \(kbps > 0 ? String(kbps) : "as saved")")
+            await m.getAgain(f, minBitrate: kbps > 0 ? kbps : nil)
+        } else {
+            say("get: \(item.name) (\(item.kind)) option \(optionName)")
+            m.get(item, option)
+        }
 
         var t = 0.0, n = 0
         while m.run != nil || !m.upNext.isEmpty {

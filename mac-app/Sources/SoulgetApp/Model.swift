@@ -118,14 +118,21 @@ enum Quality: String, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
-        case .best: "Lossless (FLAC, WAV, AIFF) first; MP3 320 when that's all anyone has"
-        case .smaller: "MP3 320 first; lossless when there's no good MP3"
+        case .best: "Lossless (FLAC, WAV, AIFF) first; MP3 when that's all anyone has"
+        case .smaller: "MP3 first; lossless when there's no good MP3"
         case .lossless: "FLAC, WAV or AIFF; skips tracks that only exist as MP3"
-        case .mp3: "MP3 320 only"
+        case .mp3: "MP3 only, best bitrate first"
         }
     }
 
     static func from(_ formats: [String]) -> Quality? { allCases.first { $0.formats == formats } }
+
+    /// The lowest MP3 bitrates on offer. 320 is the default; lower ones are only used when chosen.
+    static let bitrates = [320, 256, 192, 128]
+
+    static func bitrateLabel(_ kbps: Int) -> String {
+        kbps >= 320 ? "320 kbps (best)" : "\(kbps) kbps"
+    }
 }
 
 // MARK: - Runs
@@ -442,10 +449,24 @@ final class AppModel: ObservableObject {
         get(p.item, o)
     }
 
-    func getAgain(_ folder: Status.Folder) {
+    /// Run a folder again with ITS OWN saved settings (quality, strict, years...), not today's defaults.
+    /// minBitrate: accept lower MP3 quality from now on (saved with the folder, so the 7-hour check uses it too).
+    func getAgain(_ folder: Status.Folder, minBitrate: Int? = nil) async {
         guard !folder.url.isEmpty else { return checkMissingNow() }
-        let args = (folder.kind == "master" || folder.kind == "release" ? ["--album", folder.url] : [folder.url]) + ["--events"]
-        enqueue(Request(title: "Getting \(folder.name)", args: args, kind: .get))
+        var args = folder.kind == "master" || folder.kind == "release" ? ["--album", folder.url] : [folder.url]
+        let job = await loadFolder(folder.path)?.job
+        if let job {
+            args += ["--formats", job.formats.joined(separator: ","), "--min-bitrate", String(minBitrate ?? job.minBitrate)]
+            if job.noRemixes { args.append("--no-remixes") }
+            if job.noCompilations { args.append("--no-compilations") }
+            if job.theirRemixes { args.append("--their-remixes") }
+            if job.strict { args.append("--strict") }
+            if let years = job.years { args += ["--years", years] }
+        } else if let minBitrate {
+            args += ["--min-bitrate", String(minBitrate)]
+        }
+        let extra = minBitrate.map { " (MP3 down to \($0) kbps)" } ?? ""
+        enqueue(Request(title: "Getting \(folder.name)" + extra, args: args + ["--events"], kind: .get))
     }
 
     func checkMissingNow() {
@@ -691,7 +712,12 @@ final class AppModel: ObservableObject {
     }
 
     func setQuality(_ q: Quality) async {
-        await set(["download.formats": q.formats, "download.default_min_bitrate": 320])
+        await set(["download.formats": q.formats])
+        await refresh()
+    }
+
+    func setMinBitrate(_ kbps: Int) async {
+        await set(["download.default_min_bitrate": kbps])
         await refresh()
     }
 

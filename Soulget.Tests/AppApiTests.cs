@@ -240,6 +240,16 @@ public class AppApiTests : IDisposable
         Assert.Equal("2026-10-20T14:07:00", J.Str(runs[2], "started"));
     }
 
+    [Fact]
+    public void Min_bitrate_can_be_given_by_name_for_albums_too()
+    {
+        var a = Args.Parse(new[] { "--album", "https://www.discogs.com/master/2129", "--min-bitrate", "192" });
+        Assert.Equal((192, (string?)null), (a.MinBitrate, a.Name));
+        Assert.Equal(256, Args.Parse(new[] { "Raime", "256" }).MinBitrate);
+        Assert.Equal(128, Args.Parse(new[] { "Raime", "--min-bitrate=128" }).MinBitrate);
+        Assert.Throws<UsageError>(() => Args.Parse(new[] { "Raime", "--min-bitrate", "lots" }));
+    }
+
     // -- progress lines -----------------------------------------------------------
 
     [Fact]

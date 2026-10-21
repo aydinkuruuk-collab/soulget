@@ -72,7 +72,7 @@ enum Snapshots {
             let screens: [(String, AnyView)] = [
                 ("6-folder", AnyView(FolderSheet(folder: folder, detail: sampleFolder()))),
                 ("7-history", AnyView(HistorySheet())),
-                ("8-options", AnyView(OptionsSheet(item: sampleResults()[1], options: GetOptions(strict: true, yearsOn: true, yearFrom: 2014, yearTo: 2021)))),
+                ("8-options", AnyView(OptionsSheet(item: sampleResults()[1], options: GetOptions(strict: true, yearsOn: true, yearFrom: 2014, yearTo: 2021, minBitrate: 192)))),
                 ("9-preview", AnyView(PreviewSheet(preview: samplePreview()))),
             ]
             for (name, view) in screens {

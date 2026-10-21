@@ -5,7 +5,7 @@
 # Needs Xcode (or its command line tools) and the .NET 10 SDK.
 set -eu
 cd "$(dirname "$0")"
-VERSION=2.2.0
+VERSION=2.3.0
 # The engine's source: ../standalone here, the repository's top folder on GitHub, ../engine in the zip.
 for e in ../standalone ../engine ..; do
   if [ -f "$e/Soulget/Soulget.csproj" ]; then ENGINE=$e; break; fi
@@ -42,6 +42,7 @@ cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp "$ENGINE/LICENSE" "$APP/Contents/Resources/LICENSE.txt"
 cp "$ENGINE/NOTICE" "$APP/Contents/Resources/NOTICE.txt"
 cp "$ENGINE/THIRD-PARTY-NOTICES.txt" "$APP/Contents/Resources/THIRD-PARTY-NOTICES.txt"
+cp "$ENGINE/CHANGELOG.md" "$APP/Contents/Resources/CHANGELOG.txt"
 sed "s/@VERSION@/$VERSION/g" Resources/Info.plist > "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - "$APP/Contents/Helpers/soulget-arm64" "$APP/Contents/Helpers/soulget-x64"

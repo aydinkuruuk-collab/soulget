@@ -176,7 +176,8 @@ struct GetButton: View {
         } label: {
             Text(model.folder(for: item) != nil ? "Get missing" : "Get")
         } primaryAction: {
-            model.get(item)
+            // A folder you already have: run it again with its own saved settings.
+            if let f = model.folder(for: item) { Task { await model.getAgain(f) } } else { model.get(item) }
         }
         .fixedSize()
         .disabled(!model.ready)
@@ -458,7 +459,7 @@ struct FolderRow: View {
             Button("Open in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: folder.path)) }
             if let u = URL(string: folder.url), !folder.url.isEmpty {
                 Button("Open on Discogs") { NSWorkspace.shared.open(u) }
-                Button("Get Again (new releases, missing tracks)") { model.getAgain(folder) }
+                Button("Get Again (new releases, missing tracks)") { Task { await model.getAgain(folder) } }
             }
         }
     }

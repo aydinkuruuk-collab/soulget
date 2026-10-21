@@ -13,7 +13,7 @@ mkdir -p release/stage
 # The source, without build output.
 src=release/stage/source
 mkdir -p "$src/Soulget" "$src/Soulget.Tests"
-cp -R LICENSE NOTICE THIRD-PARTY-NOTICES.txt README.md config.example.toml build.sh package.sh third-party "$src/"
+cp -R LICENSE NOTICE THIRD-PARTY-NOTICES.txt README.md CHANGELOG.md config.example.toml build.sh package.sh third-party "$src/"
 cp Soulget/*.cs Soulget/Soulget.csproj "$src/Soulget/"
 cp Soulget.Tests/*.cs Soulget.Tests/Soulget.Tests.csproj "$src/Soulget.Tests/"
 
