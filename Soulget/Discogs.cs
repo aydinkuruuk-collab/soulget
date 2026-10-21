@@ -307,6 +307,7 @@ public class Discogs
         {
             var mins = todo * interval / 60;
             say($"Reading {jobs.Count} {what} pages from Discogs ({todo} not cached yet, about {Math.Max(1, Math.Round(mins))} min).");
+            Events.Emit("discogs", ("pages", jobs.Count), ("not_cached", todo), ("minutes", Math.Max(1, Math.Round(mins))));
             if (mins > 20 && !Console.IsInputRedirected)
             {
                 var hint = interval < 1.5 ? "" : " A Discogs token in config.toml makes it about twice as fast.";
@@ -322,6 +323,7 @@ public class Discogs
             i++;
             var data = Get(path);
             if (J.Truthy(data)) outList.Add((data!, item));
+            if (i % 5 == 0 || i == jobs.Count) Events.Emit("discogs_progress", ("done", i), ("of", jobs.Count));
             if (!Console.IsOutputRedirected) Console.Write($"\r  pages read: {i}/{jobs.Count}");
         }
         if (!Console.IsOutputRedirected && jobs.Count > 0) Console.WriteLine();

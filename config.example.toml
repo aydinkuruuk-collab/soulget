@@ -15,7 +15,8 @@ download_folder = "~/Music/soulget"
 listen_port = 60000
 
 [discogs]
-# Optional. Without a token it works, just slower (25 instead of 60 requests a minute).
+# Optional. Without a token everything works, just slower (25 instead of 60 requests
+# a minute), and the Mac app's search shows no pictures.
 # Get one at https://www.discogs.com/settings/developers -> "Generate new token".
 token = ""
 

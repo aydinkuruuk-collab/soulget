@@ -259,6 +259,15 @@ public static class Schedule
         return true;
     }
 
+    /// <summary>True when the timer checks this soulget folder (the one this config.toml is in). A Mac has one
+    /// soulget timer per user; another copy of soulget may have set it up for its own folder.</summary>
+    public static bool ServesThisHome(State st)
+    {
+        if (!OperatingSystem.IsMacOS()) return true;
+        static string Full(string p) => Path.GetFullPath(p).TrimEnd('/');
+        return st.LogPath.Length > 0 && Full(Path.GetDirectoryName(st.LogPath)!) == Full(Config.Home);
+    }
+
     public static State? Status() =>
         OperatingSystem.IsMacOS() ? MacStatus() : OperatingSystem.IsWindows() ? WindowsStatus() : LinuxStatus();
 

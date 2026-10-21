@@ -1,0 +1,43 @@
+soulget for Mac
+===============
+
+Type an artist, a record label or an album. soulget reads the full track list
+from Discogs, removes duplicates, and downloads one copy of each track from
+Soulseek. Nothing to set up: soulget makes its own Soulseek login.
+
+Install
+  1. Drag "soulget" into your Applications folder.
+  2. Open it. The first time, macOS may say it can't check the app for
+     malicious software (soulget isn't sold through Apple). Then:
+       - macOS 13 or 14: right-click soulget in Applications, choose Open,
+         then Open again.
+       - macOS 15 or later: try to open it once, then go to
+         System Settings > Privacy & Security, scroll down and click
+         "Open Anyway".
+     You only do this once.
+
+Use
+  - Type a name in the box at the top and press Return.
+  - Click Get next to the right artist, label or album. The arrow next to
+    Get has more choices (originals only, no compilations, or "later").
+  - Music goes to the Music folder, in "soulget" (change it in Settings).
+  - Missing tracks: soulget can look again every 7 hours by itself
+    (Settings > General). Who has which file depends on who is online.
+  - Closing the window keeps soulget running in the menu bar (the record
+    icon at the top of the screen), so downloads carry on.
+
+Settings (soulget menu > Settings)
+  - General: music folder, quality (lossless first is the default), the
+    7-hour check.
+  - Soulseek: the automatic login, or your own Soulseek name.
+  - Discogs: an optional free key, for pictures and faster reading.
+
+Needs macOS 13 (Ventura) or later, on a Mac with an Apple chip or Intel.
+
+License
+  soulget is free software under the GNU General Public License v3 only,
+  with no warranty. It is built on Soulseek.NET and is not maintained by,
+  endorsed by, or affiliated with the Soulseek.NET project or its author.
+  See LICENSE.txt and NOTICE.txt. The complete source is in the "source"
+  folder. You are responsible for using soulget lawfully and within the
+  Soulseek network's rules, including copyright law where you live.

@@ -26,7 +26,8 @@ public static class Retry
             rows.Add(new object?[] { "when", "weekday", "hour", "folder", "searched", "found", "still_missing", "given_up", "trigger" });
         rows.Add(new object?[] { when.ToString("yyyy-MM-dd HH:mm"), when.ToString("ddd", System.Globalization.CultureInfo.InvariantCulture),
                                  when.Hour, folder, tried, found, stillMissing, gaveUp, trigger });
-        Files.AppendCsv(p, rows);
+        try { Files.AppendCsv(p, rows); }
+        catch (IOException) when (!Directory.Exists(root)) { }   // the drive went away during the check
     }
 
     public static bool SoulseekQtRunning()
@@ -80,6 +81,7 @@ public static class Retry
         var root = cfg.DownloadRoot();
         var trigger = scheduled ? "scheduled" : "manual";
         Console.WriteLine($"\n=== soulget retry check, {En(Misses.Now(), "ddd dd MMM yyyy HH:mm")} ({trigger}) ===");
+        Events.Emit("retry", ("state", "start"));
         var fileLimit = Native.OpenFileLimit();
         Console.WriteLine($"(open-file limit: {(fileLimit > 0 ? fileLimit.ToString() : "n/a")})");
 
@@ -93,6 +95,7 @@ public static class Retry
             {
                 Console.WriteLine("Skipped: SoulseekQt is open with the same login, and two logins would kick " +
                                   "each other off. (A second login under [retry] in config.toml avoids this.)");
+                Events.Emit("skipped", ("reason", "SoulseekQt is open with the same login"));
                 return 0;
             }
         }
@@ -104,6 +107,7 @@ public static class Retry
         if (folders.Count == 0)
         {
             Console.WriteLine("Nothing to retry yet: no download folders with saved settings.");
+            Events.Emit("retry", ("state", "nothing"));
             return 0;
         }
 
@@ -142,11 +146,13 @@ public static class Retry
             works.Add(new Work(folder, keep, Opts.From(cfg, job.MinBitrate, job.Formats, retry: true, strict: job.Strict),
                                outcomes, misses, gave));
             Console.WriteLine($"{Path.GetFileName(folder)}: {keep.Count} still missing" + (gave > 0 ? $", {gave} given up on" : ""));
+            Events.Emit("retry_folder", ("folder", Path.GetFileName(folder)), ("missing", keep.Count), ("gave_up", gave));
         }
 
         if (!works.Any(w => w.Todo.Count > 0))
         {
             Console.WriteLine("Nothing left to look for.");
+            Events.Emit("retry", ("state", "nothing"));
             foreach (var w in works) LogCheck(root, Path.GetFileName(w.OutDir), 0, 0, 0, w.GaveUp, trigger);
             return 0;
         }
@@ -165,6 +171,7 @@ public static class Retry
         catch (Locked e)
         {
             Console.WriteLine($"Skipped: {e.Message}.");
+            Events.Emit("skipped", ("reason", e.Message));
             return 0;
         }
         bool ok;
@@ -174,7 +181,7 @@ public static class Retry
             var engine = MakeEngine(login.user, login.pass, Path.Combine(root, ".incomplete"),
                                     cfg.Int("soulseek", "listen_port", 60000), verbose);
             ok = Runner.RunWorkAsync(works, engine, login.user).GetAwaiter().GetResult();
-            if (stop.Pressed) Console.WriteLine("\nStopped. Whatever was found so far is kept.");
+            if (stop.Pressed) { Console.WriteLine("\nStopped. Whatever was found so far is kept."); Events.Emit("stopped"); }
         }
         if (!ok) return 1;
 
@@ -189,6 +196,7 @@ public static class Retry
             Console.WriteLine($"  {Path.GetFileName(w.OutDir)}: found {found} of {w.Todo.Count}; {still} still missing");
         }
         Console.WriteLine($"When each check ran and what it found: {Path.Combine(root, RetryLog)}");
+        Events.Emit("retry", ("state", "done"), ("found", total));
         if (scheduled && total > 0)
         {
             var names = string.Join(", ", works.Where(w => w.Found() > 0).Select(w => Path.GetFileName(w.OutDir)));
@@ -237,8 +245,9 @@ public static class Retry
                 }
         }
         var st = Schedule.Status();
-        Console.WriteLine("\nTimer: " + (st is { Loaded: true } ? $"on, every {Hours(st.IntervalSeconds)} hours."
-                                                                  : "off (turn on with soulget --schedule on)."));
+        Console.WriteLine("\nTimer: " + (st is { Loaded: true } && Schedule.ServesThisHome(st) ? $"on, every {Hours(st.IntervalSeconds)} hours."
+                                          : st is { Loaded: true } ? $"on, but for the soulget in {Path.GetDirectoryName(st.LogPath)}."
+                                          : "off (turn on with soulget --schedule on)."));
         Console.WriteLine("have = files in that folder; looking for = searched again at each check; " +
                           $"given up = still missing {G(days)} days after first missed.");
         return 0;

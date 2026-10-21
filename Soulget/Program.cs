@@ -9,8 +9,8 @@ public class Args
     public string? Name;
     public int? MinBitrate;
     public bool Label, DryRun, NoRemixes, NoCompilations, TheirRemixes, Strict, Later, Queue, Rename, Yes,
-                RetryMissing, Scheduled, Verbose, Help, Version, License;
-    public string? Years, Formats, Album, Schedule, DumpTracks;
+                RetryMissing, Scheduled, Verbose, Help, Version, License, Events, AppStatus, AppSet;
+    public string? Years, Formats, Album, Schedule, DumpTracks, AppFind;
     public int? Limit;
     public List<string> Track = new();
 
@@ -56,6 +56,11 @@ public class Args
                 case "--album": a.Album = Value(); break;
                 case "--track": a.Track.Add(Value()); break;
                 case "--dump-tracks": a.DumpTracks = Value(); break;
+                // Used by the Mac app (machine-readable output):
+                case "--events": a.Events = true; break;
+                case "--app-find": a.AppFind = Value(); break;
+                case "--app-status": a.AppStatus = true; break;
+                case "--app-set": a.AppSet = true; break;
                 case "--home": Value(); break;   // read before everything else, see Main
                 case "--limit":
                     var l = Value();
@@ -85,7 +90,7 @@ public class UsageError(string message) : Exception(message);
 
 public static class Program
 {
-    public const string AppVersion = "2.0.1";
+    public const string AppVersion = "2.1.0";
     public const string Wanted = "Wanted tracks";  // folder for single tracks added with --track
 
     public const string Usage = """
@@ -185,21 +190,27 @@ public static class Program
         {
             var cfg = Config.Load(); // before parsing, so even --help creates config.toml on a first run
             var args = Args.Parse(argv);
+            Events.On = args.Events;
             if (args.Help) { Console.WriteLine(HelpText); return 0; }
             if (args.Version) { Console.WriteLine(LegalNotice); return 0; }
             if (args.License) { Console.WriteLine(EmbeddedText("Soulget.LICENSE")); return 0; }
             if (args.DumpTracks is not null) return DumpTracks(cfg, args.DumpTracks);
+            if (args.AppFind is not null) return AppApi.Find(cfg, args.AppFind);
+            if (args.AppStatus) return AppApi.Status(cfg);
+            if (args.AppSet) return AppApi.Set(Console.In.ReadToEnd());
             return Run(cfg, args);
         }
         catch (UsageError e)
         {
             Console.Error.WriteLine(Usage);
             Console.Error.WriteLine($"soulget: error: {e.Message}");
+            Events.Emit("error", ("message", e.Message));
             return 2;
         }
         catch (Exit e)
         {
             if (e.Message.Length > 0) Console.Error.WriteLine(e.Message);
+            if (e.Code != 0) Events.Emit("error", ("message", e.Message.Trim()));
             return e.Code;
         }
     }
@@ -248,6 +259,7 @@ public static class Program
                     : dg.Find(args.Label ? "label" : "artist", args.Name!);
                 var kind = found.Kind is "master" or "release" ? "album" : found.Kind;
                 Console.WriteLine($"Discogs {kind}: {found.Name}   {found.Url}");
+                Events.Emit("found", ("kind", kind), ("name", found.Name), ("url", found.Url));
                 if (found.Others.Count > 0)
                 {
                     Console.WriteLine("  Not the right one? Run again with one of these links instead:");
@@ -282,6 +294,7 @@ public static class Program
         Console.WriteLine($"Saved to {Path.Combine(outDir, "tracklist.csv")}");
 
         if (args.Limit is > 0) tracks = tracks.Take(args.Limit.Value).ToList();
+        Events.Emit("list", ("folder", Path.GetFileName(outDir)), ("path", outDir), ("total", tracks.Count));
         if (args.DryRun)
         {
             Console.WriteLine("\nFirst tracks on the list:");
@@ -303,7 +316,9 @@ public static class Program
             }
             Console.WriteLine($"\nQueued {queued} tracks for the timer" + (alreadyHad > 0 ? $" ({alreadyHad} you already have)" : "") + ".");
             var st = Schedule.Status();
-            if (st is { Loaded: true })
+            var timerHere = st is { Loaded: true } && Schedule.ServesThisHome(st);
+            Events.Emit("queued", ("folder", Path.GetFileName(outDir)), ("count", queued), ("had", alreadyHad), ("timer", timerHere));
+            if (timerHere)
                 Console.WriteLine($"The next check (every {Retry.G(st.IntervalSeconds / 3600)} hours) will look for them. " +
                                   "See the list any time with: soulget --queue");
             else
@@ -322,6 +337,7 @@ public static class Program
         var misses = Misses.Load(outDir);
         misses.Save();
         var (todo, outcomes) = Runner.SplitDone(tracks, outDir);
+        Events.Emit("todo", ("folder", Path.GetFileName(outDir)), ("todo", todo.Count), ("had", tracks.Count - todo.Count));
         if (todo.Count < tracks.Count)
             Console.WriteLine($"{tracks.Count - todo.Count} tracks were downloaded in an earlier run; skipping them.");
         Console.WriteLine($"\nSearching Soulseek: {string.Join(", ", formats)}; mp3 and other lossy files must be at least {minBr} kbps.");
@@ -339,6 +355,8 @@ public static class Program
             if (stop.Pressed)
             {
                 Console.WriteLine("\nStopped. Finished files are kept; run the same command again to continue where it left off.");
+                Runner.PrintSummary(work.Outcomes, outDir, quiet: true);
+                Events.Emit("stopped");
                 return 130;
             }
         }

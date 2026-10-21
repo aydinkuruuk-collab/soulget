@@ -72,11 +72,16 @@ public static class Runner
         var slow = new List<Candidate>(); // users dropped for being slow, kept as a last resort
         var lastFail = "";
         var fmts = opts.Formats;
+        var folder = Path.GetFileName(outDir.TrimEnd(Path.DirectorySeparatorChar));
+        void Ev(string state, params (string, object?)[] more) =>
+            Events.Emit("track", new (string, object?)[] { ("folder", folder), ("key", t.Key), ("title", t.Display()), ("state", state) }
+                                 .Concat(more).ToArray());
 
         async Task<(bool, string, Outcome?)> Attempt(Candidate c, bool maySwitch)
         {
             var quality = Tracks.Lossless.Contains(c.Ext) ? c.Ext : $"{c.Ext} {c.Bitrate} kbps";
             Say($"{tag} {t.Display()}: downloading {quality} from {c.Username}");
+            Ev("downloading", ("quality", quality), ("from", c.Username));
             var name = Tracks.FileStem(t, opts.FileName);
             string final;
             lock (taken)
@@ -86,15 +91,17 @@ public static class Runner
                     final = Path.Combine(outDir, $"{name} ({n}).{c.Ext}");
                 taken.Add(Path.GetFileName(final));   // reserved while downloading
             }
-            var (ok, why) = await sl.DownloadAsync(c, final, opts.Download, msg => Say($"{tag}      {t.Display()}: {msg}"), maySwitch);
+            var (ok, why) = await sl.DownloadAsync(c, final, opts.Download, msg => { Say($"{tag}      {t.Display()}: {msg}"); Ev("progress", ("message", msg)); }, maySwitch);
             if (!ok)
             {
                 lock (taken) taken.Remove(Path.GetFileName(final));
                 Say($"{tag}      {c.Username}: {why}");
+                Ev("retrying", ("message", $"{c.Username}: {why}"));
                 return (false, why, null);
             }
             var mb = new FileInfo(final).Length / 1e6;
             Say($"{tag} OK   {t.Display()}  ({mb:0.0} MB)");
+            Ev("done", ("quality", quality), ("mb", Math.Round(mb, 1)));
             return (true, "", new Outcome(t, "downloaded", Path.GetFileName(final), c.Ext, c.Bitrate, c.Username));
         }
 
@@ -168,6 +175,7 @@ public static class Runner
         }
         else note = $"{attempts} users tried, none delivered (last: {lastFail})";
         Say($"{tag} MISS {t.Display()}: {note}");
+        Ev("missing", ("message", note));
         return new Outcome(t, attempts == 0 ? "not found" : "failed", note: note);
     }
 
@@ -217,6 +225,7 @@ public static class Runner
         try { Directory.Delete(incomplete, recursive: true); } catch (DirectoryNotFoundException) { }
         Directory.CreateDirectory(incomplete);
         Say($"Logging in to Soulseek as {user}...");
+        Events.Emit("login", ("state", "start"), ("user", user));
         try
         {
             await sl.StartAsync();
@@ -224,10 +233,12 @@ public static class Runner
         catch (LoginFailed e)
         {
             Say($"Could not log in: {e.Message}");
+            Events.Emit("login", ("state", "failed"), ("message", e.Message));
             await sl.StopAsync();
             return false;
         }
         Say("Logged in.");
+        Events.Emit("login", ("state", "ok"));
         var have = AllDownloads(Path.GetDirectoryName(works[0].OutDir.TrimEnd(Path.DirectorySeparatorChar))!);
         try
         {
@@ -235,6 +246,7 @@ public static class Runner
             {
                 if (w.Todo.Count == 0) continue;
                 Say($"\n{Path.GetFileName(w.OutDir)}: looking for {w.Todo.Count} tracks, {w.Opts.Parallel} at a time.\n");
+                Events.Emit("folder", ("folder", Path.GetFileName(w.OutDir)), ("path", w.OutDir), ("todo", w.Todo.Count));
                 await WorkFolderAsync(sl, w, have);
             }
         }
@@ -242,7 +254,11 @@ public static class Runner
         {
             try { await sl.StopAsync().WaitAsync(TimeSpan.FromSeconds(15)); } catch (Exception) { }
             try { Directory.Delete(incomplete, recursive: true); } catch (IOException) { }
-            foreach (var w in works) WriteReport(w.Outcomes, Path.Combine(w.OutDir, "report.csv"));
+            foreach (var w in works)
+            {
+                try { WriteReport(w.Outcomes, Path.Combine(w.OutDir, "report.csv")); }
+                catch (IOException) { Say($"Couldn't write report.csv in {w.OutDir}: the folder can't be reached."); }
+            }
         }
         return true;
     }
@@ -256,21 +272,37 @@ public static class Runner
         var folderName = Path.GetFileName(w.OutDir);
         string? stopReason = null;
         var state = new object();
+        const string Gone = "Stopping: the music folder can't be reached any more (was the drive disconnected?).";
+        bool FolderGone() => !Directory.Exists(w.OutDir);
+
+        void StopFor(string why)   // call inside lock (state)
+        {
+            if (stopReason is not null) return;
+            stopReason = why;
+            Say($"\n{why} The rest stay on the timer's list.\n");
+            Events.Emit("stopping", ("folder", folderName), ("reason", why));
+        }
 
         void Record(Track t, Outcome o)
         {
             lock (state)
             {
                 lock (w.Outcomes) w.Outcomes.Add(o);
-                if (o.Status == "downloaded")
+                try
                 {
-                    manifest[t.Key] = new JsonObject { ["file"] = o.File, ["from"] = o.User };
-                    lock (have) have[t.Key] = (folderName, o.File);
-                    Manifest.Save(w.OutDir, manifest);
+                    if (o.Status == "downloaded")
+                    {
+                        manifest[t.Key] = new JsonObject { ["file"] = o.File, ["from"] = o.User };
+                        lock (have) have[t.Key] = (folderName, o.File);
+                        Manifest.Save(w.OutDir, manifest);
+                    }
+                    // Saved after every track, so stopping halfway loses nothing.
+                    w.Misses.Record(t.Key, o.Status is "downloaded" or "already had", o.Note, name: t.Display());
+                    w.Misses.Save();
                 }
-                // Saved after every track, so stopping halfway loses nothing.
-                w.Misses.Record(t.Key, o.Status is "downloaded" or "already had", o.Note, name: t.Display());
-                w.Misses.Save();
+                catch (IOException e) { StopFor(FolderGone() ? Gone : $"Stopping: couldn't write to the music folder ({e.Message})."); }
+                Events.Emit("result", ("folder", folderName), ("key", t.Key), ("title", t.Display()), ("status", o.Status),
+                            ("file", o.File), ("note", o.Note));
             }
         }
 
@@ -278,13 +310,9 @@ public static class Runner
         {
             lock (state)
             {
-                if (stopReason is null)
-                {
-                    stopReason = why;
-                    Say($"\n{why} The rest stay on the timer's list.\n");
-                }
+                StopFor(why);
                 w.Misses.Queue(t.Key, t.Display());   // not searched, but not forgotten
-                w.Misses.Save();
+                try { w.Misses.Save(); } catch (IOException) when (FolderGone()) { }
             }
         }
 
@@ -296,6 +324,7 @@ public static class Runner
                 if (stopReason is not null) { Postpone(t, stopReason); continue; }
                 if (StopRequested) { Postpone(t, "Stopped by you."); continue; }
                 if (sl.Problem is { } problem) { Postpone(t, $"Stopping: {problem}."); continue; }
+                if (FolderGone()) { Postpone(t, Gone); continue; }
                 if (Native.OpenFilesNearlyUsedUp())
                 {
                     Postpone(t, $"Stopping this round early: too many network connections are open " +
@@ -349,9 +378,13 @@ public static class Runner
             })));
     }
 
-    public static void PrintSummary(List<Outcome> outcomes, string outDir)
+    public static void PrintSummary(List<Outcome> outcomes, string outDir, bool quiet = false)
     {
         int N(string s) => outcomes.Count(o => o.Status == s);
+        Events.Emit("summary", ("folder", Path.GetFileName(outDir.TrimEnd(Path.DirectorySeparatorChar))), ("path", outDir),
+                    ("downloaded", N("downloaded")), ("had", N("already had")), ("not_found", N("not found")),
+                    ("failed", N("failed")), ("gave_up", N("gave up")));
+        if (quiet) return;
         Console.WriteLine($"\nDone.\n  downloaded now:   {N("downloaded")}\n  already had:      {N("already had")}\n" +
                           $"  not found:        {N("not found")}\n  failed downloads: {N("failed")}" +
                           (N("gave up") > 0 ? $"\n  given up on:      {N("gave up")}" : ""));

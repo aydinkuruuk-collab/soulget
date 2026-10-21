@@ -201,6 +201,41 @@ public class FlowTests : IDisposable
         Assert.Contains("unexpected error", J.Str(Misses.Load(outDir).Data[tracks[0].Key], "note"));   // still listed for retries
     }
 
+    /// <summary>Downloads like FakeEngine, but the music drive disappears when the second download starts.</summary>
+    class DriveGoesAway(FakeEngine inner, string drive) : IEngine
+    {
+        int downloads;
+        public Task StartAsync() => inner.StartAsync();
+        public Task StopAsync() => inner.StopAsync();
+        public string? Problem => inner.Problem;
+        public Task<List<Candidate>> SearchAsync(string q, double wait) => inner.SearchAsync(q, wait);
+        public Task<(bool Ok, string Why)> DownloadAsync(Candidate c, string finalPath, DownloadSettings s, Action<string> say, bool maySwitch)
+        {
+            if (++downloads == 2) { Directory.Delete(drive, recursive: true); return Task.FromResult((false, "connection lost")); }
+            return inner.DownloadAsync(c, finalPath, s, say, maySwitch);
+        }
+    }
+
+    [Fact]
+    public void A_disconnected_drive_stops_the_run_cleanly()
+    {
+        var tracks = new List<Track> { T("Raime", "This Foundry", "Raime EP", 2010), T("Raime", "Passed Over", "Raime EP", 2010),
+                                       T("Raime", "Exist", "Raime EP", 2010) };
+        var fake = new FakeEngine(new()
+        {
+            ["raime this foundry"] = new() { R("u1", @"m\Raime\Raime EP\This Foundry.mp3") },
+            ["raime passed over"] = new() { R("u2", @"m\Raime\Raime EP\Passed Over.mp3") },
+            ["raime exist"] = new() { R("u3", @"m\Raime\Raime EP\Exist.mp3") },
+        });
+        var drive = Path.Combine(tmp, "MusicDrive");
+        var outDir = Path.Combine(drive, "Blackest Ever Black (label)");
+        Directory.CreateDirectory(outDir);
+        var w = new Work(outDir, tracks, O(), new(), Misses.Load(outDir));
+        Assert.True(Runner.RunWorkAsync(new() { w }, new DriveGoesAway(fake, drive), "x").GetAwaiter().GetResult());   // no crash
+        Assert.Equal(new[] { "downloaded", "failed" }, w.Outcomes.Select(o => o.Status));   // the third track was never started
+        Assert.False(Directory.Exists(drive));   // nothing written anywhere else
+    }
+
     static string Folder(string root, string name, Job job, params Track[] downloaded)
     {
         var d = Path.Combine(root, name);

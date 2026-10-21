@@ -164,6 +164,7 @@ public class WaitQueue(string root)
         }
         var ticket = line.Join();
         Console.WriteLine($"\nWaiting: {reason}. {what} starts when it's its turn (Ctrl+C to cancel).");
+        Events.Emit("waiting", ("reason", reason));
         try
         {
             while (true)

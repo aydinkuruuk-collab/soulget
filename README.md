@@ -10,6 +10,9 @@ soulget --label "Ghostly International" 256
 soulget --album "Plastikman - Sheet One" 320
 ```
 
+Prefer clicking to typing? On a Mac, the soulget app does the same with a search box and a Get
+button, and needs no setup (`soulget-<version>-mac-app.zip`).
+
 soulget is a single program file: nothing else needs installing. It runs on
 Mac (Apple chip or Intel), Windows and Linux. The Mac versions are the most
 tested; the Windows and Linux versions are new.
